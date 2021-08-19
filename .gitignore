@@ -37,3 +37,9 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# custom folders
+data
+spatial
+.DS_Store
+*.Rproj
