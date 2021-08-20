@@ -1,5 +1,5 @@
 # set wd
-knitr::opts_knit$set(root.dir = 'D:/projects/SDRs')
+# knitr::opts_knit$set(root.dir = '~/projects/fishdiv')
 
 #' load assigned variables from MASTER.R
 source('R/MASTER.R')
@@ -67,9 +67,13 @@ tab_all <- full_join(
   read.csv('tabs/stations_attributes.csv') %>% as_tibble(),
   read.csv('tabs/stations_indices.csv') %>% as_tibble()
 ) %>%
+  full_join(read.csv('tabs/stations_climate.csv') %>% as_tibble()) %>%
+  left_join(read.csv('tabs/stations_paleoarea.csv') %>% as_tibble() %>% group_by(gsim.no) %>% summarise(paleoarea_extra = sum(paleoarea_extra))) %>%
+  left_join(read.csv('tabs/stations_CSI.csv') %>% as_tibble()) %>%
+  left_join(read.csv('tabs/stations_HFI.csv') %>% as_tibble()) %>%
   inner_join(.,sf::read_sf('spatial/stations_catchments.gpkg') %>%
                as_tibble() %>% dplyr::select(-geom,-area.est)) %>%
-  full_join(.,read.csv('tabs/stations_SR.csv'),by='gsim.no') %>%
+  inner_join(.,read.csv('tabs/stations_SR.csv'),by='gsim.no') %>%
   as_tibble()
 
 write.csv(tab_all,'tabs/stations_all_attributes.csv',row.names = F)
@@ -134,15 +138,15 @@ dev.off()
 (tab <- tab_all %>%
     # variables that need to be computed
     mutate(
-      PREC_DELTA = abs(prec_cur_mean - prec_hist_mean)/prec_cur_mean,
-      TEMP_DELTA = abs(temp_cur_mean - temp_hist_mean)/temp_cur_mean,
-      CROP_2015 = cropland_2015_sum/cropland_2015_count,
-      CROP_1992 = cropland_1992_sum/cropland_1992_count,
-      URB = nl.mean*area.est
+      PREC_DELTA = abs(p_cur - p_hist)/p_cur,
+      TEMP_DELTA = abs(t_cur - t_hist)/t_cur,
+      # CROP_2015 = cropland_2015_sum/cropland_2015_count,
+      # CROP_1992 = cropland_1992_sum/cropland_1992_count,
+      # URB = nl.mean*area.est
     ) %>%
-    mutate(
-      CROP_PRES = (CROP_1992+CROP_2015)/2 * area.est
-    ) %>%
+    # mutate(
+    #   CROP_PRES = (CROP_1992+CROP_2015)/2 * area.est
+    # ) %>%
     # select the variables and rename them
     select(
       # ID variables
@@ -159,8 +163,8 @@ dev.off()
       Q_DOYMAX = DOYMAX7,
       
       # Ecosystem productivity
-      PREC_PRES = prec_cur_mean, 
-      TEMP_PRES = temp_cur_mean, 
+      PREC_PRES = p_cur, 
+      TEMP_PRES = t_cur, 
       
       # Quaternary climate stabolity
       PREC_DELTA, 
@@ -171,15 +175,17 @@ dev.off()
       TI = tp.mean, 
       ELEVATION = ele.mean, 
       SLOPE = slp.mean,
+      PALEO_AREA = paleoarea_extra,
       
       # Anthropogenic
-      POP = pop.count, 
-      DAMS = dams_good2_no, 
-      URB,
-      CROP_PRES,
+      # POP = pop.count, 
+      # DAMS = dams_good2_no, 
+      # URB,
+      # CROP_PRES,
       HFP2009 = HFP2009_mean,
       HFP1993 = HFP1993_mean,
       CSI = csi,
+      SR_exo,
       # Response
       SR_tot
     ) %>%
@@ -195,16 +201,24 @@ dev.off()
 
 # NAs
 apply(tab,2,function(x) sum(is.na(x)))
-
-# looks like URB has NAs instead of zeroes
-tab$URB[is.na(tab$URB)] <- 0
+# > apply(tab,2,function(x) sum(is.na(x)))
+# ID        BAS    QUALITY     Q_MEAN      Q_MIN      Q_MAX       Q_CV   Q_DOYMIN   Q_DOYMAX  PREC_PRES  TEMP_PRES 
+# 0          0          0          1          1          1          1          1          1          0          0 
+# PREC_DELTA TEMP_DELTA       AREA         TI  ELEVATION      SLOPE PALEO_AREA    HFP2009    HFP1993        CSI     SR_exo 
+# 0          0          0         11          3          9        429          0          0          0          0 
+# SR_tot        FSI 
+# 0          0 
 
 # Q < 0
 apply(tab %>% select(starts_with('Q'),-QUALITY,starts_with('PREC')),2,function(x) sum(x < 0,na.rm=T))
 
+# there are 429 missing values for paleo area due to lack of overlap with basins connectivity provided -> set to 0
+tab$PALEO_AREA[is.na(tab$PALEO_AREA)] <- 0
+
+
 # adjust NA and Q<0 values
 (tab <- tab %>%
-    tidyr::drop_na() %>% # we are also dropping 351 basins with NAs in DRAINAGE
+    tidyr::drop_na() %>%
     filter(Q_MIN >= 0))
 
 #'  save the final table
@@ -212,88 +226,89 @@ write.csv(tab,'tabs/stations_filtered.csv',row.names = F)
 
 # make a table with densities instead ########################################################################################
 
-(tab <- tab_all %>%
-   # variables that need to be computed
-   mutate(
-     PREC_DELTA = abs(prec_cur_mean - prec_hist_mean)/prec_cur_mean,
-     TEMP_DELTA = abs(temp_cur_mean - temp_hist_mean)/temp_cur_mean,
-     CROP_2015 = cropland_2015_sum/cropland_2015_count,
-     CROP_1992 = cropland_1992_sum/cropland_1992_count,
-     URB = nl.mean*area.est
-   ) %>%
-   mutate(
-     CROP_PRES = (CROP_1992+CROP_2015)/2
-   ) %>%
-   # select the variables and rename them
-   select(
-     # ID variables
-     ID = gsim.no, 
-     BAS = MAIN_BAS, 
-     QUALITY = quality,
-     
-     # Discharge covariates
-     Q_MEAN = MEAN, 
-     Q_MIN = MIN7, 
-     Q_MAX = MAX7, 
-     Q_CV = CV, 
-     Q_DOYMIN = DOYMIN7, 
-     Q_DOYMAX = DOYMAX7,
-     
-     # Ecosystem productivity
-     PREC_PRES = prec_cur_mean, 
-     TEMP_PRES = temp_cur_mean, 
-     
-     # Quaternary climate stabolity
-     PREC_DELTA, 
-     TEMP_DELTA,
-     
-     # Habitat area and heterogeneity
-     AREA = area.est, 
-     TI = tp.mean, 
-     ELEVATION = ele.mean, 
-     SLOPE = slp.mean,
-     
-     # Anthropogenic
-     POP = pop.count, 
-     DAMS = dams_good2_no, 
-     URB,
-     CROP_PRES,
-     HFP2009 = HFP2009_mean,
-     HFP1993 = HFP1993_mean,
-     CSI = csi,
-     # Response
-     SR_tot
-   ) %>%
-   mutate(
-     FSI = round(100 - CSI,4),
-     POP = POP/AREA,
-     DAMS = DAMS/AREA,
-     URB = URB/AREA,
-     CROP_PRES = CROP_PRES/AREA
-   ))
-
-#' kick-out quality level 'caution' (meaning catchment area estimate is uncertain)
-(tab <- tab %>%
-    filter(QUALITY !="Caution"))
-
-#' check for NAs and flow/precipitation metrics < 0 and remove those records
-
-# NAs
-apply(tab,2,function(x) sum(is.na(x)))
-
-# looks like URB has NAs instead of zeroes
-tab$URB[is.na(tab$URB)] <- 0
-
-# Q < 0
-apply(tab %>% select(starts_with('Q'),-QUALITY,starts_with('PREC')),2,function(x) sum(x < 0,na.rm=T))
-
-# adjust NA and Q<0 values
-(tab <- tab %>%
-    tidyr::drop_na() %>% # we are also dropping 351 basins with NAs in DRAINAGE
-    filter(Q_MIN >= 0))
-
-#'  save the final table
-write.csv(tab,'tabs/stations_filtered_divAREA.csv',row.names = F)
+#' (tab <- tab_all %>%
+#'    # variables that need to be computed
+#'    mutate(
+#'      PREC_DELTA = abs(p_cur - p_hist)/p_cur,
+#'      TEMP_DELTA = abs(t_cur - t_hist)/t_cur,
+#'      # CROP_2015 = cropland_2015_sum/cropland_2015_count,
+#'      # CROP_1992 = cropland_1992_sum/cropland_1992_count,
+#'      # URB = nl.mean*area.est
+#'    ) %>%
+#'    # mutate(
+#'    #   CROP_PRES = (CROP_1992+CROP_2015)/2
+#'    # ) %>%
+#'    # select the variables and rename them
+#'    select(
+#'      # ID variables
+#'      ID = gsim.no, 
+#'      BAS = MAIN_BAS, 
+#'      QUALITY = quality,
+#'      
+#'      # Discharge covariates
+#'      Q_MEAN = MEAN, 
+#'      Q_MIN = MIN7, 
+#'      Q_MAX = MAX7, 
+#'      Q_CV = CV, 
+#'      Q_DOYMIN = DOYMIN7, 
+#'      Q_DOYMAX = DOYMAX7,
+#'      
+#'      # Ecosystem productivity
+#'      PREC_PRES = p_cur, 
+#'      TEMP_PRES = t_cur, 
+#'      
+#'      # Quaternary climate stabolity
+#'      PREC_DELTA, 
+#'      TEMP_DELTA,
+#'      
+#'      # Habitat area and heterogeneity
+#'      AREA = area.est, 
+#'      TI = tp.mean, 
+#'      ELEVATION = ele.mean, 
+#'      SLOPE = slp.mean,
+#'      
+#'      # Anthropogenic
+#'      # POP = pop.count, 
+#'      # DAMS = dams_good2_no, 
+#'      # URB,
+#'      # CROP_PRES,
+#'      HFP2009 = HFP2009_mean,
+#'      HFP1993 = HFP1993_mean,
+#'      CSI = csi,
+#'      SR_exo,
+#'      # Response
+#'      SR_tot
+#'    ) %>%
+#'    mutate(
+#'      FSI = round(100 - CSI,4),
+#'      # POP = POP/AREA,
+#'      # DAMS = DAMS/AREA,
+#'      # URB = URB/AREA,
+#'      # CROP_PRES = CROP_PRES/AREA
+#'    ))
+#' 
+#' #' kick-out quality level 'caution' (meaning catchment area estimate is uncertain)
+#' (tab <- tab %>%
+#'     filter(QUALITY !="Caution"))
+#' 
+#' #' check for NAs and flow/precipitation metrics < 0 and remove those records
+#' 
+#' # NAs
+#' apply(tab,2,function(x) sum(is.na(x)))
+#' 
+#' # looks like URB has NAs instead of zeroes
+#' # tab$URB[is.na(tab$URB)] <- 0
+#' 
+#' # Q < 0
+#' apply(tab %>% select(starts_with('Q'),-QUALITY,starts_with('PREC')),2,function(x) sum(x < 0,na.rm=T))
+#' 
+#' # adjust NA and Q<0 values
+#' (tab <- tab %>%
+#'     tidyr::drop_na() %>% # we are also dropping 351 basins with NAs in DRAINAGE
+#'     filter(Q_MIN >= 0))
+#' 
+#' #'  save the final table
+#' write.csv(tab,'tabs/stations_filtered_divAREA.csv',row.names = F)
 
 #------------------------------------------------------------------------------------------------------------------------------
 #' ## NORMALIZE VARIABLES
@@ -302,7 +317,7 @@ write.csv(tab,'tabs/stations_filtered_divAREA.csv',row.names = F)
 source("R/HighstatLibV10.R") # For VIFs
 
 #'  load the preprocessed table with all attributes
-(tab <- read.csv('tabs/stations_filtered_divAREA.csv') %>%
+(tab <- read.csv('tabs/stations_filtered.csv') %>%
     as_tibble() %>%
     select(-QUALITY)  )
 
@@ -312,26 +327,27 @@ source("R/HighstatLibV10.R") # For VIFs
 (tab_ranges <- apply(tab %>% select_if(is.numeric),2,
                      function(x) paste0(round(mean(x,na.rm=T),2),' (',round(min(x,na.rm=T),2),' - ',round(max(x,na.rm=T),2), ')') 
 ) %>% as.data.frame)
-write.csv(tab_ranges,'tabs/covariates_range_values_divAREA.csv',row.names = T)
+write.csv(tab_ranges,'tabs/covariates_range_values.csv',row.names = T)
 
 #'***********************************************************************************************
 
 # check correlation covariates
 # raw
 covariates <- tab %>%  
-  select(-ID,-BAS, -Q_DOYMAX, -Q_DOYMIN, -DAMS, -HFP1993, -POP, -URB, -CROP_PRES, -SR_tot, -CSI) %>%
+  select(-ID,-BAS, -Q_DOYMAX, -Q_DOYMIN, -SLOPE, -HFP1993, -SR_tot, -CSI) %>%
   rename(
     # streamflow
     "Flow mean" = "Q_MEAN", "Flow max" = "Q_MAX","Flow min" = "Q_MIN","Flow seasonality" = "Q_CV",
     # habitat area, heterogeneity and isolation
-    "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION","Slope" = "SLOPE",
+    "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION",
     # climate
     "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
     # quaternary climate stability
-    "Precipitation change" = "PREC_DELTA", "Temperature change" = "TEMP_DELTA",
+    "Precipitation change" = "PREC_DELTA", "Temperature change" = "TEMP_DELTA", "Paleo area" = "PALEO_AREA",
     # anthropogenic
-    "Human Footprint Index" = "HFP2009", 
-    "Fragmentation Status Index" = "FSI"
+    "Human Footprint Index" = "HFP2009",
+    "Fragmentation Status Index" = "FSI",
+    "No. exotic species" = "SR_exo"
   )
 
 # normalized
@@ -359,11 +375,10 @@ dev.off()
 # corvif(tab.t %>% select(-starts_with('SR'),-HFP1993,-Q_MAX, -Q_MIN, -PREC_PRES))
 
 covariates <- tab %>%  
-  select(-ID,-BAS, -Q_DOYMAX, -Q_DOYMIN, -DAMS, -HFP1993, -POP, -URB, -CROP_PRES, -SR_tot, -CSI) %>%
+  select(-ID,-BAS, -SLOPE, -Q_DOYMAX, -Q_DOYMIN, -HFP1993, -SR_tot, -CSI) %>%
   keep(is.numeric)
 # normalized
 covariates.t <- normalize_vars(covariates,figs_name = NA, BN_name = 'proc/covariates_BN')
-
 
 covariates$SR_tot <- tab$SR_tot
 covariates$BAS <- tab$BAS
@@ -373,6 +388,6 @@ covariates.t$SR_tot <- log10(tab$SR_tot) #use log10 transf for SR
 covariates.t$BAS <- tab$BAS
 covariates.t$ID <- tab$ID
 
-write.csv(covariates,'tabs/input_tab_divAREA.csv',row.names=F)
-write.csv(covariates.t,'tabs/input_tab_transformed_divAREA.csv',row.names=F)
+write.csv(covariates,'tabs/input_tab.csv',row.names=F)
+write.csv(covariates.t,'tabs/input_tab_transformed.csv',row.names=F)
 

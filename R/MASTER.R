@@ -4,7 +4,7 @@
 GSIM_dir <- 'data/GSIM/'
 
 # HYDROSHEDS BASINS DIR
-BAS_dir <- 'data/watersheds_hybas12/'
+BAS_dir <- '~/surfdrive/data/watersheds_hybas12_rds/'
 
 # thresholds -----------------------------------------------------------
 # minimum number of years the station has been monitored

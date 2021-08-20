@@ -1,5 +1,5 @@
 # set wd
-knitr::opts_knit$set(root.dir = 'C:/Users/barbarossav/Documents/projects/SDRs')
+# knitr::opts_knit$set(root.dir = '~/projects/fishdiv')
 
 #' load assigned variables from MASTER.R
 source('R/MASTER.R')
@@ -18,8 +18,8 @@ valerioUtils::libinv(c(
 
 source("R/HighstatLibV10.R") # For VIFs
 
-tab <- read.csv('tabs/input_tab_divAREA.csv')
-tab.t <- read.csv('tabs/input_tab_transformed_divAREA.csv')
+tab <- read.csv('tabs/input_tab.csv')
+tab.t <- read.csv('tabs/input_tab_transformed.csv')
 
 # # first fit with Q only
 # (fit <- lmer('SR_tot ~ Q_MEAN + (1 + 1|BAS)',data = tab.t))
@@ -43,12 +43,13 @@ lmer.glmulti<-function(formula,data,random="",...) {
 
 
 # define variables
-covariates_selection <- tab.t %>% select(-BAS,-ID,-starts_with('SR'), -starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
+covariates_selection <- tab.t %>% select(-BAS,-ID,-SR_tot, -starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
 # covariates_selection <- tab.t %>% select(starts_with('Q'),-starts_with('Q_M'),TEMP_PRES,ELEVATION) %>% colnames
 
 response_selection = 'SR_tot'
 random_term <- 'BAS'
-interaction_term <- c('TEMP_PRES','ELEVATION') # interactions with Q_magnitude variables
+# interaction_term <- c('TEMP_PRES','ELEVATION') # interactions with Q_magnitude variables
+interaction_term <- c('HFP2009','FSI') # interactions with Q_magnitude variables and Area
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
 
 for(Qvar in Q_magnitude){
@@ -60,12 +61,13 @@ for(Qvar in Q_magnitude){
     paste(c(Qvar,covariates_selection),collapse=" + "), # fixed terms
     '+',
     paste0('I(',interaction_term,'*',Qvar,')',collapse = ' + '), # interaction terms with Qvar
-    
+    '+',
+    paste0('I(',interaction_term,'*AREA)',collapse = ' + '), # interaction terms with Area
     '+',
     paste0("(1|",random_term,")") # random term
   ),
   data = df)
-  for(nv in 1:(length(covariates_selection)+length(interaction_term)+1)){
+  for(nv in 1:(length(covariates_selection)+length(interaction_term)*2+1)){
     
     dred <- glmulti::glmulti(formula(fit,
                                      fixed.only=TRUE),
@@ -91,11 +93,11 @@ for(Qvar in Q_magnitude){
     coef_tab <- data.frame(
       matrix(ncol = 1 + 
                length(covariates_selection) + 
-               length(interaction_term) + 
+               length(interaction_term)*2 + 
                length(Q_magnitude),
              nrow = 1))
     if(length(interaction_term) > 0){ 
-      colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection,paste0('I(',interaction_term,' * ',Qvar,')')) 
+      colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection,paste0('I(',interaction_term,' * ',Qvar,')'),paste0('I(',interaction_term,' * AREA)')) 
     }else{
       colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection)
     }
@@ -137,12 +139,12 @@ for(Qvar in Q_magnitude){
 
 res_filtered <- foreach(Qvar = Q_magnitude) %do% {
   
-  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
+  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)*2+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
   
   # filter out rows with correlated terms
   rows_to_filter <- numeric()
   for(j in 1:nrow(d)){
-    if(sum(as.integer(is.na(d[j,c('ELEVATION','SLOPE')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
+    # if(sum(as.integer(is.na(d[j,c('ELEVATION','SLOPE')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
     if(sum(as.integer(is.na(d[j,c('TEMP_PRES','TEMP_DELTA')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
     if(sum(as.integer(is.na(d[j,c('Q_MIN','Q_CV')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
   }
@@ -207,14 +209,23 @@ p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
                 coefs = c(
                   # streamflow
                   "Flow" = "Q","Flow seasonality" = "Q_CV",
+                  
                   # habitat area, heterogeneity and isolation
-                  "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", "Elevation*Flow" = "I(ELEVATION * Q)",
+                  "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", 
+                  
                   # climate
-                  "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", "Temperature*Flow" = "I(TEMP_PRES * Q)", 
+                  "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
+                  
                   # quaternary climate stability
-                  "Precipitation change" = "PREC_DELTA",
+                  "Precipitation change" = "PREC_DELTA","Temperature change" = "TEMP_CHANGE",
+                  "Paleo area" = "PALEO_AREA",
+                  
                   # anthropogenic
-                  "Human Footprint Index" = "HFP2009", "Fragmentation Status Index" = "FSI"
+                  "No. exotic species" = "SR_exo",
+                  "Human Footprint Index (HFI)" = "HFP2009", "Fragmentation Status Index (FSI)" = "FSI",
+                  "HFI*Flow" = "I(HFP2009 * Q)","FSI*Flow" = "I(FSI * Q)",
+                  "HFI*Area" = "I(HFP2009 * AREA)","FSI*Area" = "I(FSI * AREA)"
+                  
                 )
 ) +
   theme_bw() +
@@ -236,15 +247,23 @@ export_summs(fit,
              colors = colorspace::sequential_hcl(4,'Viridis')[1:3],
              coefs = c(
                # streamflow
-               "Streamflow" = "Q","Streamflow Seasonality" = "Q_CV",
+               "Flow" = "Q","Flow seasonality" = "Q_CV",
+               
                # habitat area, heterogeneity and isolation
-               "Catchment Area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", "Elevation*Streamflow" = "I(ELEVATION * Q)",
+               "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", 
+               
                # climate
-               "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", "Temperature*Streamflow" = "I(TEMP_PRES * Q)", 
+               "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
+               
                # quaternary climate stability
-               "Precipitation change" = "PREC_DELTA",
+               "Precipitation change" = "PREC_DELTA","Temperature change" = "TEMP_CHANGE",
+               "Paleo area" = "PALEO_AREA",
+               
                # anthropogenic
-               "Human Footprint Index" = "HFP2009", "Fragmentation Status Index" = "FSI"
+               "No. exotic species" = "SR_exo",
+               "Human Footprint Index (HFI)" = "HFP2009", "Fragmentation Status Index (FSI)" = "FSI",
+               "HFI*Flow" = "I(HFP2009 * Q)","FSI*Flow" = "I(FSI * Q)",
+               "HFI*Area" = "I(HFP2009 * AREA)","FSI*Area" = "I(FSI * AREA)"
              ), to.file = "docx", file.name = 'tabs/coefficients_regression.docx')
 
 # plot(tab.t$HFP2009,tab$SR_tot/(tab$AREA**1) %>% log10)

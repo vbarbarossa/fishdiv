@@ -40,6 +40,9 @@ vignettes/*.pdf
 
 # custom folders
 data
+proc
 spatial
+tabs
+figs
 .DS_Store
 *.Rproj

@@ -1,5 +1,5 @@
 # set wd
-knitr::opts_knit$set(root.dir = 'D:/projects/SDRs')
+# knitr::opts_knit$set(root.dir = '~/projects/fishdiv')
 
 #' load assigned variables from MASTER.R
 source('R/MASTER.R')
@@ -84,7 +84,8 @@ plot(st_geometry(st_as_sf(stations_attributes,coords = c('LON','LAT'),crs=4326))
 
 #' exclude stations whose catchment boundary overlaps for more than `r MAX_OVERLAP_PERC`%
 
-bb <- rnaturalearth::ne_download(type = "wgs84_bounding_box", category = "physical",returnclass = "sf") #%>% st_transform(54009)
+crs_custom <- "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+bb <- rnaturalearth::ne_download(type = "wgs84_bounding_box", category = "physical",returnclass = "sf") #%>% st_transform(crs_custom)
 
 # assign a main basin value to each station
 start_time <- Sys.time() #monitor time elapsed
@@ -94,7 +95,7 @@ basins <- lapply(
     readRDS(paste0(BAS_dir,x,'.rds')) %>%
       st_buffer(0) %>%
       st_crop(bb) %>%
-      st_transform(54009) %>%
+      st_transform(crs_custom) %>%
       mutate(MAIN_BAS_AREA = as.numeric(st_area(.)/10**6)) %>% #include area in km2
       # make the shapefile lighter, anyway there are no stations catchments < than the threshold
       # do minus 100 km2 since there might be differences in the area calculation depending on the projection used
@@ -106,7 +107,7 @@ Sys.time() - start_time #~1.5 min
 # get the MAIN_BAS id for each station by intersecting the polygons with the points
 start_time <- Sys.time()
 stations_filter1 <- st_intersection(
-  st_as_sf(stations_attributes,coords = c('LON','LAT'),crs=4326) %>% st_transform(54009),
+  st_as_sf(stations_attributes,coords = c('LON','LAT'),crs=4326) %>% st_transform(crs_custom),
   basins %>% st_buffer(0) # buffer to avoid TopologyException error
 ) %>% as_tibble() %>% select(-geometry)
 Sys.time() - start_time # ~6 min
@@ -154,7 +155,7 @@ stations_catchments <- lapply(
         # calculate difference polygon of most downstream catchment with upstream catchments
         d <- st_difference(catch[i,],catch[i+1:nrow(catch),]) %>% 
           # transform to projected coordinates to calculate area
-          st_transform(54009) %>% 
+          st_transform(crs_custom) %>% 
           # calculate perc_overlap with intersecting points as (1 - area_diff/area)*100 = (area_up/area)*100
           mutate(perc_overlap = (1 - as.numeric(st_area(.)/10**6)/area.est)*100) %>% 
           # filter out stations with overlap > MAX_OVERLAP_PERC
@@ -204,43 +205,69 @@ rm(list = ls())
 #' # Number of dams from GOOD2 dataset
 #' 
 
-# read dams data
-dams <- read_sf('data/GOOD2/GOOD2_dams.shp')
+# # read dams data
+# dams <- read_sf('data/GOOD2/GOOD2_dams.shp')
+# 
+# # read GSIM catchments
+# catch <- read_sf('spatial/stations_catchments.gpkg')
+# 
+# # check crs
+# st_crs(dams) == st_crs(catch)
+# 
+# # get the sparse list of intersections
+# lst <- st_intersects(catch,dams)
+# 
+# # number of catchments without dams:
+# length(lst) - lst %>% sapply(.,function(x) length(x) != 0) %>% sum
+# 
+# # ids of dams
+# dams_id <- dams$DAM_ID
+# 
+# # compile table with HYBAS_ID and corresponding gsim.no
+# names(lst) <- catch$gsim.no
+# catch_dams <- lst[which(unname(lst %>% sapply(.,function(x) length(x) != 0)))] %>% 
+#   lapply(seq_along(.), function(n,v,i){data.frame(DAMS_ID = dams_id[v[[i]]],gsim.no = n[i])},n=names(.),v = .) %>%
+#   do.call('rbind',.) %>%
+#   as_tibble()
+# 
+# # count number of dams in each catchment
+# dams_no <- catch_dams %>%
+#   group_by(gsim.no) %>%
+#   summarise(dams_good2_no = n())
+# 
+# # join to the catchments table
+# catch_new <- left_join(catch,dams_no)
+# # set to 0 the NAs
+# catch_new$dams_good2_no[is.na(catch_new$dams_good2_no)] <- 0
+# 
+# # and update the previous catchment gpkg file
+# st_write(catch_new,'spatial/stations_catchments2.gpkg',delete_dsn = TRUE)
 
+#' ********************************************************************************
+#' # Sample climate data
+#' 
+source('R/MASTER.R')
+library(raster)
 # read GSIM catchments
 catch <- read_sf('spatial/stations_catchments.gpkg')
 
 # check crs
-st_crs(dams) == st_crs(catch)
+st_crs(catch)
 
-# get the sparse list of intersections
-lst <- st_intersects(catch,dams)
+# sample worldclim layers
+lyr = c('spatial/temp_hist.tif','spatial/temp_cur.tif','spatial/prec_hist.tif','spatial/prec_cur.tif')
+name = c('t_hist','t_cur','p_hist','p_cur')
+df <- data.frame(gsim.no = catch$gsim.no)
+for(i in 1:length(lyr)){
+  r <- raster(lyr[i]) %>% projectRaster(raster(crs = 4326))
+  df[,name[i]] <- extract(r,catch,fun=mean,na.rm=T)
+}
 
-# number of catchments without dams:
-length(lst) - lst %>% sapply(.,function(x) length(x) != 0) %>% sum
+# save sampled data
+write.csv(df,'tabs/stations_climate.csv',row.names = F)
 
-# ids of dams
-dams_id <- dams$DAM_ID
-
-# compile table with HYBAS_ID and corresponding gsim.no
-names(lst) <- catch$gsim.no
-catch_dams <- lst[which(unname(lst %>% sapply(.,function(x) length(x) != 0)))] %>% 
-  lapply(seq_along(.), function(n,v,i){data.frame(DAMS_ID = dams_id[v[[i]]],gsim.no = n[i])},n=names(.),v = .) %>%
-  do.call('rbind',.) %>%
-  as_tibble()
-
-# count number of dams in each catchment
-dams_no <- catch_dams %>%
-  group_by(gsim.no) %>%
-  summarise(dams_good2_no = n())
-
-# join to the catchments table
-catch_new <- left_join(catch,dams_no)
-# set to 0 the NAs
-catch_new$dams_good2_no[is.na(catch_new$dams_good2_no)] <- 0
-
-# and update the previous catchment gpkg file
-st_write(catch_new,'spatial/stations_catchments2.gpkg',delete_dsn = TRUE)
+# clear the console
+rm(list = ls())
 
 #' *****************************************************************************************************************************
 #' # Species richness data sampling
@@ -259,11 +286,11 @@ valerioUtils::libinv(c('dplyr','sf'))
 #' intersect the catchments with the HB12 points to assign the gsim id to each catchment
 
 # load hydrobasins 12 shpefile points layer
-hb12_p <- read_sf('../fishsuit/data/hybas12_points_nolakes.gpkg') %>%
-  select(HYBAS_ID,MAIN_BAS)
+hb12_p <- read_sf('~/surfdrive/Documents/projects/fishsuit/data/hybas12_points_nolakes.gpkg') %>%
+  dplyr::select(HYBAS_ID,MAIN_BAS)
 
 # load the previously produced catchments layer
-catch <- read_sf('spatial/stations_catchments2.gpkg')
+catch <- read_sf('spatial/stations_catchments.gpkg')
 
 # check crs
 st_crs(hb12_p) == st_crs(catch)
@@ -286,7 +313,7 @@ catch_hb <- lst[which(unname(lst %>% sapply(.,function(x) length(x) != 0)))] %>%
 
 # load Tedesco data for filtering out non-native species
 # sample Tedesco basins
-bas <- read_sf('../fishsuit/data/Tedesco/Basin042017_3119.shp') %>% mutate(id = 1:nrow(.)) 
+bas <- read_sf('~/surfdrive/Documents/projects/fishsuit/data/Tedesco/Basin042017_3119.shp') %>% mutate(id = 1:nrow(.)) 
 bas_ras <-  fasterize::fasterize(sf = bas,raster = raster::raster(res = 1/12), field = 'id')
 hb12_p$ws <- raster::extract(bas_ras,hb12_p)
 # check most recurring ted basin id per main bas, and assign that value to all the sub-basins belonging to the main bas
@@ -301,13 +328,23 @@ hb12_main_bas <- hb12_p %>%
 # merge back with hb12_p
 hb12 <- hb12_p %>% as_tibble() %>% select(-geom) %>% left_join(hb12_main_bas) %>% select(-ws)
 
-
-ted_occ <- read.csv('../fishsuit/data/Tedesco/Occurrence_Table.csv',sep = ';') %>%
+ted_occ <- read.csv('~/surfdrive/Documents/projects/fishsuit/data/Tedesco/Occurrence_Table.csv',sep = ';') %>%
   as_tibble() %>%
   rename(BasinName = X1.Basin.Name) %>%
   left_join(bas %>% as_tibble() %>% select(-geometry,BasinName,id)) %>%
-  select(id,binomial = X6.Fishbase.Valid.Species.Name, native = X3.Native.Exotic.Status)
-
+  select(id,BasinName,binomial = X6.Fishbase.Valid.Species.Name, Status = X3.Native.Exotic.Status)
+# exotic native 
+# 8128 102441 
+# complement the table with Su et al., 2021 updated info on exotic species and extinctions
+su_occ <- read.csv('data/Su_et_al_Science_table.csv') %>%
+  as_tibble() %>%
+  rename(BasinName = Basin.Name) %>%
+  left_join(bas %>% as_tibble() %>% select(-geometry) %>% select(BasinName,id)) %>%
+  select(id,BasinName,binomial = Species.Latin.Name, Status)
+su_occ$Status[su_occ$Status == 'extinction/extirpation'] <- 'extinct'
+su_occ$Status[su_occ$Status == 'introduction'] <- 'exotic'
+# exotic extinct 
+# 7219     292 
 #' check fish endemism at the basin scale: if a fish species occurs in only one main basin then it is considered endemic
 
 # all species names excluding exclusively lentic and other filtering steps as in fishsuit
@@ -317,24 +354,33 @@ ted_occ <- read.csv('../fishsuit/data/Tedesco/Occurrence_Table.csv',sep = ';') %
 #   filter(fishbase_1 %in% (read.csv('../fishsuit/proc/thresholds_average_filtered.csv')%>%
 #                             pull(binomial) %>% as.character()))
 
-fish_sp_names <- read_sf('../fishsuit/proc/species_ranges_merged.gpkg') %>%
+fish_sp_names <- read_sf('~/surfdrive/Documents/projects/fishsuit/proc/species_ranges_merged.gpkg') %>%
   as_tibble() %>% select(-geom) %>% 
-  filter(binomial %in% (read.csv('../fishsuit/proc/thresholds_average_filtered.csv')%>%
-                            pull(binomial) %>% as.character()))
+  filter(binomial %in% (read.csv('~/surfdrive/Documents/projects/fishsuit/proc/thresholds_average_filtered.csv')%>%
+                          pull(binomial) %>% as.character()))
 
 
 # get the fish data and filter out exclusively lentic
-fish <- readRDS('../fishsuit/proc/species_ranges_merged_on_hybas12.rds') %>%
+fish <- readRDS('~/surfdrive/Documents/projects/fishsuit/proc/species_ranges_merged_on_hybas12.rds') %>%
   inner_join(fish_sp_names) %>%
   as_tibble() %>%
   select(HYBAS_ID, binomial) %>%
   distinct()
 length(unique(fish$binomial)) #11,425
 
-# filter out non-native based on ted_occ
+# filter out non-native and extinct based on ted_occ and su_occ
 # prepare a list of exotic fish per ted basin id
 exotic <- ted_occ %>%
-  filter(native == 'exotic') %>%
+  bind_rows(su_occ) %>%
+  distinct() %>%
+  filter(Status == 'exotic') %>%
+  select(id,binomial) %>%
+  mutate(binomial  = gsub('\\.',' ',binomial)) %>%
+  arrange(id)
+
+extinct <- su_occ %>%
+  distinct() %>%
+  filter(Status == 'extinct') %>%
   select(id,binomial) %>%
   mutate(binomial  = gsub('\\.',' ',binomial)) %>%
   arrange(id)
@@ -345,20 +391,33 @@ fish$bas[is.na(fish$bas)] <- 0
 fish_split <- fish %>%
   split(fish$bas)
 
-fish_1 <- fish_split[names(fish_split) %in% as.character(unique(exotic$id))]
+fish_1 <- fish_split[names(fish_split) %in% as.character(unique(c(exotic$id,extinct$id)))]
 fish_2 <- fish_split[!names(fish_split) %in% names(fish_1)]
 
 fish_filtered <- lapply(names(fish_1),function(x){
   t <- fish_1[x][[1]]
   e <- exotic[as.character(exotic$id) == x,] %>% pull(binomial)
+  e <- unique(c(e,extinct[as.character(extinct$id) == x,] %>% pull(binomial)))
   t <- t[!t$binomial %in% e,]
   return(t)
 }) %>% do.call('rbind',.) %>%
   bind_rows(fish_2 %>% do.call('rbind',.))
 
+fish_exotic <- lapply(names(fish_1),function(x){
+  t <- fish_1[x][[1]]
+  e <- exotic[as.character(exotic$id) == x,] %>% pull(binomial)
+  t <- t[t$binomial %in% e,]
+  return(t)
+}) %>% do.call('rbind',.)
+
+
 # difference in number of hbunits covered
 # > nrow(fish) - nrow(fish_filtered)
 # [1] 339476 #~1% of occurrence records
+# based on updated exotic and extinct
+# > nrow(fish) - nrow(fish_filtered)
+# [1] 355872
+# == 16,396 extra records removed due to extinctions
 
 # merge with hb12_p data to have info on MAIN_BAS
 # fish_end <- fish %>%
@@ -370,11 +429,17 @@ fish_filtered <- lapply(names(fish_1),function(x){
 fish <- fish_filtered %>% 
   # full_join(.,fish_end) %>%
   filter(HYBAS_ID %in% catch_hb$HYBAS_ID) %>%
-  full_join(.,catch_hb)
+  inner_join(.,catch_hb)
+# total species from 11422 to 8507
+
+fish_exo <- fish_exotic %>% 
+  # full_join(.,fish_end) %>%
+  filter(HYBAS_ID %in% catch_hb$HYBAS_ID) %>%
+  inner_join(.,catch_hb)
+
 
 
 #' calculate species richness per catchment
-
 fish_sr <- fish %>%
   group_by(gsim.no) %>%
   summarize(
@@ -382,9 +447,111 @@ fish_sr <- fish %>%
     # ,SR_end = length(unique(binomial[endemism == 1]))
   )
 
+fish_sr_exo <- fish_exo %>%
+  group_by(gsim.no) %>%
+  summarize(
+    SR_exo = length(unique(binomial))
+  )
+
+fish_sr <- left_join(fish_sr,fish_sr_exo)
+fish_sr$SR_exo[is.na(fish_sr$SR_exo)] <- 0
 # range of SR values
 summary(fish_sr)
 
 # save table
 write.csv(fish_sr,'tabs/stations_SR.csv',row.names = F)
+
+# clear the console
+rm(list = ls())
+
+
+#' ***************************************************************************
+#' # Paleoconnectivity
+#' 
+
+# get matrix of values
+M <- read.csv('data/palaeoconnection_Dias et al 2014_adj.csv',sep=',',header = T) %>%
+  apply(1,function(x){
+    s <- strsplit(x,',')[[1]]
+    s[s == "\"1\""] <- 1
+    s[s == "NA"] <- 0
+    return(s[-c(1,2)] %>% as.numeric)
+  })
+
+# and vector of names
+names <- read.csv('data/palaeoconnection_Dias et al 2014_adj.csv',sep=',',header = T) %>%
+  apply(1,function(x){
+    strsplit(x,',')[[1]][1]
+  })
+
+# compute the area of the basins based on ted dataset
+bas <- read_sf('~/surfdrive/Documents/projects/fishsuit/data/Tedesco/Basin042017_3119.shp') %>% mutate(id = 1:nrow(.)) %>%
+  select(BasinName,Area=Surf_area) %>% as_tibble() %>% select(-geometry) %>%
+  filter(BasinName %in% names) %>%
+  as.data.frame()
+row.names(bas) <- bas$BasinName
+
+# filter out extra rows and col
+to_exclude <- which(!names %in% bas$BasinName)
+M <- M[-to_exclude,-to_exclude]
+
+# area vector
+v <- bas[names[-to_exclude],'Area']
+
+# multiply the matrix by the vector to get the total sum of each row
+tot <- data.frame(basin = names[-to_exclude],
+                  paleoarea_extra = M %*% v)
+
+# merge back with hydrobasins/gsim data ---
+# load hydrobasins 12 shpefile points layer
+library(raster)
+hb12_p <- read_sf('~/surfdrive/Documents/projects/fishsuit/data/hybas12_points_nolakes.gpkg') %>%
+  dplyr::select(HYBAS_ID,MAIN_BAS)
+
+# load the previously produced catchments layer
+catch <- read_sf('spatial/stations_catchments.gpkg')
+
+# check crs
+st_crs(hb12_p) == st_crs(catch)
+
+# get the sparse list of intersections
+lst <- st_intersects(catch,hb12_p)
+
+# number of catchments without hydrobasins:
+length(lst) - (lst %>% sapply(.,function(x) length(x) != 0) %>% sum)
+
+# ids of hydrobasins
+hybas_id <- hb12_p$HYBAS_ID
+
+# compile table with HYBAS_ID and corresponding gsim.no
+names(lst) <- catch$gsim.no
+catch_hb <- lst[which(unname(lst %>% sapply(.,function(x) length(x) != 0)))] %>% 
+  lapply(seq_along(.), function(n,v,i){data.frame(HYBAS_ID = hybas_id[v[[i]]],gsim.no = n[i])},n=names(.),v = .) %>%
+  do.call('rbind',.) %>%
+  as_tibble()
+
+bas <- read_sf('~/surfdrive/Documents/projects/fishsuit/data/Tedesco/Basin042017_3119.shp') %>% mutate(id = 1:nrow(.)) 
+bas_ras <-  fasterize::fasterize(sf = bas,raster = raster::raster(res = 1/12), field = 'id')
+hb12_p$ws <- raster::extract(bas_ras,hb12_p)
+# check most recurring ted basin id per main bas, and assign that value to all the sub-basins belonging to the main bas
+hb12_main_bas <- hb12_p %>%
+  as_tibble() %>% dplyr::select(-geom) %>%
+  filter(!is.na(ws)) %>%
+  group_by(MAIN_BAS) %>%
+  summarise(
+    bas = table(ws) %>% sort(decreasing = T) %>% .[1] %>% names
+  )
+
+# merge back with hb12_p
+hb12 <- hb12_p %>% as_tibble() %>% dplyr::select(-geom) %>% left_join(hb12_main_bas) %>% dplyr::select(-ws)
+
+cb <- left_join(catch_hb,hb12) %>%
+  dplyr::select(gsim.no,bas) %>%
+  distinct() %>%
+  left_join(bas %>% mutate(bas = as.character(id)) %>% dplyr::select(bas,basin = BasinName)) %>%
+  dplyr::select(-geometry)
+
+res <- inner_join(cb,tot)
+
+write.csv(res,'tabs/stations_paleoarea.csv',row.names = F)
 
