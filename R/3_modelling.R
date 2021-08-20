@@ -49,7 +49,7 @@ covariates_selection <- tab.t %>% select(-BAS,-ID,-SR_tot, -starts_with('Q_M'), 
 response_selection = 'SR_tot'
 random_term <- 'BAS'
 # interaction_term <- c('TEMP_PRES','ELEVATION') # interactions with Q_magnitude variables
-interaction_term <- c('HFP2009','FSI') # interactions with Q_magnitude variables and Area
+interaction_term <- c('HFP2009','FSI','SR_exo') # interactions with Q_magnitude variables
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
 
 for(Qvar in Q_magnitude){
@@ -62,12 +62,12 @@ for(Qvar in Q_magnitude){
     '+',
     paste0('I(',interaction_term,'*',Qvar,')',collapse = ' + '), # interaction terms with Qvar
     '+',
-    paste0('I(',interaction_term,'*AREA)',collapse = ' + '), # interaction terms with Area
-    '+',
+    # paste0('I(',interaction_term,'*AREA)',collapse = ' + '), # interaction terms with Area
+    # '+',
     paste0("(1|",random_term,")") # random term
   ),
   data = df)
-  for(nv in 1:(length(covariates_selection)+length(interaction_term)*2+1)){
+  for(nv in 1:(length(covariates_selection)+length(interaction_term)+1)){
     
     dred <- glmulti::glmulti(formula(fit,
                                      fixed.only=TRUE),
@@ -93,11 +93,11 @@ for(Qvar in Q_magnitude){
     coef_tab <- data.frame(
       matrix(ncol = 1 + 
                length(covariates_selection) + 
-               length(interaction_term)*2 + 
+               length(interaction_term) + 
                length(Q_magnitude),
              nrow = 1))
     if(length(interaction_term) > 0){ 
-      colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection,paste0('I(',interaction_term,' * ',Qvar,')'),paste0('I(',interaction_term,' * AREA)')) 
+      colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection,paste0('I(',interaction_term,' * ',Qvar,')')) 
     }else{
       colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection)
     }
@@ -139,7 +139,7 @@ for(Qvar in Q_magnitude){
 
 res_filtered <- foreach(Qvar = Q_magnitude) %do% {
   
-  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)*2+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
+  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
   
   # filter out rows with correlated terms
   rows_to_filter <- numeric()
@@ -221,10 +221,9 @@ p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
                   "Paleo area" = "PALEO_AREA",
                   
                   # anthropogenic
-                  "No. exotic species" = "SR_exo",
-                  "Human Footprint Index (HFI)" = "HFP2009", "Fragmentation Status Index (FSI)" = "FSI",
-                  "HFI*Flow" = "I(HFP2009 * Q)","FSI*Flow" = "I(FSI * Q)",
-                  "HFI*Area" = "I(HFP2009 * AREA)","FSI*Area" = "I(FSI * AREA)"
+                  "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
+                  "Human Footprint Index (HFI)" = "HFP2009", "HFI*Flow" = "I(HFP2009 * Q)",
+                  "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)"
                   
                 )
 ) +
@@ -260,10 +259,9 @@ export_summs(fit,
                "Paleo area" = "PALEO_AREA",
                
                # anthropogenic
-               "No. exotic species" = "SR_exo",
-               "Human Footprint Index (HFI)" = "HFP2009", "Fragmentation Status Index (FSI)" = "FSI",
-               "HFI*Flow" = "I(HFP2009 * Q)","FSI*Flow" = "I(FSI * Q)",
-               "HFI*Area" = "I(HFP2009 * AREA)","FSI*Area" = "I(FSI * AREA)"
+               "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
+               "Human Footprint Index (HFI)" = "HFP2009", "HFI*Flow" = "I(HFP2009 * Q)",
+               "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)"
              ), to.file = "docx", file.name = 'tabs/coefficients_regression.docx')
 
 # plot(tab.t$HFP2009,tab$SR_tot/(tab$AREA**1) %>% log10)
