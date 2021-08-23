@@ -14,7 +14,7 @@ p <- tab %>%
   geom_point(alpha = 0.2) +
   facet_wrap(~ var, scales = "free",ncol = 4) +
   theme_bw()
-p
+# p
 
 p_log <- tab %>%
   select(colnames(tab)[92:ncol(tab)]) %>%
@@ -23,7 +23,7 @@ p_log <- tab %>%
   geom_point(alpha = 0.2) +
   facet_wrap(~ var, scales = "free",ncol = 4) +
   theme_bw()
-p_log
+# p_log
 
 ggsave('figs/check_bivariate.pdf',p,width = 200,height = 300,units = 'mm')
 ggsave('figs/check_bivariate_all_log.pdf',p_log,width = 200,height = 300,units = 'mm')
@@ -34,7 +34,7 @@ ggsave('figs/check_bivariate_all_log.pdf',p_log,width = 200,height = 300,units =
 # load the table
 # t <- read.csv('tabs/input_tab_transformed.csv')
 # t2 <- read.csv('tabs/input_tab.csv')
-t <- read.csv('tabs/input_tab_transformed_divAREA.csv')
+t <- read.csv('tabs/input_tab_transformed.csv')
 
 # read spatial data and bind
 s <- read_sf('spatial/stations_catchments.gpkg')
@@ -113,7 +113,7 @@ Q_name <- c('Mean flow','Minimum flow','Maximum flow')
 
 random_term <- 'BAS'
 response_selection = 'SR_tot'
-dfu <- read.csv('tabs/input_tab_divAREA.csv')
+dfu <- read.csv('tabs/input_tab.csv')
 
 res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_',response_selection,'_',x,'_FILTERED.csv')))
 
@@ -121,7 +121,7 @@ df_ <- list()
 df_line <- list()
 for(i in 1:3){
   
-  df <- read.csv('tabs/input_tab_transformed_divAREA.csv')
+  df <- read.csv('tabs/input_tab_transformed.csv')
   
   Qvar = Q_magnitude[i]
   Qn <- Q_name[i]
@@ -215,8 +215,8 @@ response_selection = 'SR_tot'
 # calculate residuals
 for(i in 1:3){
   
-  df <- read.csv('tabs/input_tab_transformed_divAREA.csv')
-  dfu <- read.csv('tabs/input_tab_divAREA.csv')
+  df <- read.csv('tabs/input_tab_transformed.csv')
+  dfu <- read.csv('tabs/input_tab.csv')
   
   res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_',response_selection,'_',x,'_FILTERED.csv')))
   
@@ -253,8 +253,8 @@ for(i in 1:3){
   
   ggsave(paste0('figs/goodness_of_fit_',Qvar,'.jpg'),pg,
          width = 100,height = 100,dpi = 600,units = 'mm',scale = 1)
-
-  }
+  
+}
 
 
 
@@ -264,7 +264,7 @@ for(i in 1:3){
 df$resid <- resid(fit)
 
 # link to spatial data for lat long
-s <- read_sf('spatial/stations_catchments2.gpkg')
+s <- read_sf('spatial/stations_catchments.gpkg')
 s <- s %>% select(ID = gsim.no) %>% right_join(df[,c('ID','resid')])
 
 # calculate centroids of s
@@ -426,3 +426,38 @@ ggsave('figs/map_SR.jpg', pm,
 # ggsave('figs/map_SR.tiff', pm,
 #        width = 200,height = 90,dpi = 600,units = 'mm')
 
+#--------------------------------------------------------------------------
+
+library(sjPlot)
+library(sjmisc)
+library(ggplot2)
+
+Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
+random_term <- 'BAS'
+response_selection = 'SR_tot'
+i = 1
+
+df <- read.csv('tabs/input_tab_transformed.csv')
+dfu <- read.csv('tabs/input_tab.csv')
+
+res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_',response_selection,'_',x,'_FILTERED.csv')))
+
+Qvar <- Q_magnitude[i]
+mod <- paste0('SR_tot ~',
+              res_filtered[[i]] %>% filter(BIC == min(BIC)) %>% dplyr::select(model) %>% pull %>% as.character,
+              ' + ',
+              paste0("(1|",random_term,")"))
+mod <- gsub(Q_magnitude[i],'Q',mod)
+
+colnames(df) <- gsub(Q_magnitude[i],'Q',colnames(df))
+colnames(dfu) <- gsub(Q_magnitude[i],'Q',colnames(dfu))
+
+dfu$BAS <- as.factor(dfu$BAS)
+to_scale <- colnames(dfu %>% select(-SR_tot) %>% purrr::keep(is.numeric))
+for(j in to_scale) dfu[,j] <- scale(dfu[,j]) %>% as.numeric()
+
+fit <- lme4::lmer(mod, data = df)
+fitu <- lme4::lmer('SR_tot ~Q + PREC_PRES + TEMP_PRES + PREC_DELTA + AREA + ELEVATION + PALEO_AREA + HFP2009 + SR_exo + FSI + FSI*Q + SR_exo*Q + HFP2009*Q + (1|BAS)',
+                  data=dfu)
+summary(fitu)
+plot_model(fitu, type='int')

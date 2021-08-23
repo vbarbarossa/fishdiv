@@ -21,8 +21,6 @@ source("R/HighstatLibV10.R") # For VIFs
 tab <- read.csv('tabs/input_tab.csv')
 # tab.t <- read.csv('tabs/input_tab_transformed.csv')
 
-
-
 # # first fit with Q only
 # (fit <- lmer('SR_tot ~ Q_MEAN + (1 + 1|BAS)',data = tab.t))
 # MuMIn::r.squaredGLMM(fit)
@@ -47,15 +45,15 @@ lmer.glmulti<-function(formula,data,random="",...) {
 # define variables
 covariates_selection <- tab %>% select(-BAS,-ID,-SR_tot, -starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
 # covariates_selection <- tab.t %>% select(starts_with('Q'),-starts_with('Q_M'),TEMP_PRES,ELEVATION) %>% colnames
-
-tab.t <- tab
-for(i in covariates_selection) tab.t[,i] <- scale(tab.t[,i]) %>% as.numeric()
-
 response_selection = 'SR_tot'
 random_term <- 'BAS'
 # interaction_term <- c('TEMP_PRES','ELEVATION') # interactions with Q_magnitude variables
 interaction_term <- c('HFP2009','FSI','SR_exo') # interactions with Q_magnitude variables
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
+
+tab.t <- tab
+for(i in c(Q_magnitude,covariates_selection)) tab.t[,i] <- scale(tab.t[,i]) %>% as.numeric()
+
 
 for(Qvar in Q_magnitude){
   
