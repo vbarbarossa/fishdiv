@@ -65,15 +65,15 @@ sc <- sc %>% right_join(t2)
 s <- s %>% select(ID = gsim.no) %>% right_join(t2 %>% select(ID))
 
 
-# base layers
-crs_custom <- "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
-
-world <- rnaturalearth::ne_countries(returnclass = "sf")[,1] %>%
-  st_transform(crs_custom)
-bb <- rnaturalearth::ne_download(type = "wgs84_bounding_box", category = "physical",returnclass = "sf") %>%
-  st_transform(crs_custom)
-graticules <- rnaturalearth::ne_download(type = "graticules_30", category = "physical",returnclass = "sf") %>%
-  st_transform(crs_custom)
+# # base layers
+# crs_custom <- "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+# 
+# world <- rnaturalearth::ne_countries(returnclass = "sf")[,1] %>%
+#   st_transform(crs_custom)
+# bb <- rnaturalearth::ne_download(type = "wgs84_bounding_box", category = "physical",returnclass = "sf") %>%
+#   st_transform(crs_custom)
+# graticules <- rnaturalearth::ne_download(type = "graticules_30", category = "physical",returnclass = "sf") %>%
+#   st_transform(crs_custom)
 
 # and draw
 # p <- ggplot() +
@@ -144,6 +144,7 @@ for(i in 1:3){
   library(effects)
   est<-Effect("HFP2009", partial.residuals=T, fit, quantiles = seq(0,1,by=0.02))
   est2 <- Effect("FSI", partial.residuals=T, xlevels = list(x1=c(-1,0,1)), fit)
+  est3 <- Effect("SR_exo", partial.residuals=T, fit, quantiles = seq(0,1,by=0.02))
   # est <- predictorEffect("HFP2009", partial.residuals=T, fit)
   # 
   # v_est2 <- est2$x[,1]
@@ -160,12 +161,18 @@ for(i in 1:3){
         y = est2$fit,
         x = predict(readRDS('proc/covariates_BN.rds')$FSI,est2$x[,1],inverse = T),
         lo = est2$lower, up = est2$upper, Q = Qn, var = "FSI"
+      ),
+      data.frame(
+        y = est3$fit,
+        x = predict(readRDS('proc/covariates_BN.rds')$SR_exo,est3$x[,1],inverse = T),
+        lo = est3$lower, up = est3$upper, Q = Qn, var = "No. exotic species"
       )
     )
   
   df_[[i]] <- rbind(
     data.frame(resid = est$residuals + abs(min(est$residuals)),var = "HFI", Q = Qn, x = dfu$HFP2009),
-    data.frame(resid = est2$residuals + abs(min(est2$residuals)),var = "FSI", Q = Qn, x = dfu$FSI)
+    data.frame(resid = est2$residuals + abs(min(est2$residuals)),var = "FSI", Q = Qn, x = dfu$FSI),
+    data.frame(resid = est3$residuals + abs(min(est3$residuals)),var = "No. exotic species", Q = Qn, x = dfu$SR_exo)
   )
   
   
@@ -456,8 +463,44 @@ dfu$BAS <- as.factor(dfu$BAS)
 to_scale <- colnames(dfu %>% select(-SR_tot) %>% purrr::keep(is.numeric))
 for(j in to_scale) dfu[,j] <- scale(dfu[,j]) %>% as.numeric()
 
-fit <- lme4::lmer(mod, data = df)
-fitu <- lme4::lmer('SR_tot ~Q + PREC_PRES + TEMP_PRES + PREC_DELTA + AREA + ELEVATION + PALEO_AREA + HFP2009 + SR_exo + FSI + FSI*Q + SR_exo*Q + HFP2009*Q + (1|BAS)',
-                  data=dfu)
-summary(fitu)
-plot_model(fitu, type='int')
+fit <- lme4::lmer(gsub(' I','',mod), data = df)
+
+var = 'FSI'
+xax = 10**seq(-1,6,2)
+yax = 10**(seq(0.5,2.5,0.5))
+vec = c(0.5,5,50,100)
+ps <- plot_model(fit, 
+                 type='pred',
+                 terms = c(paste0('Q [',paste(round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1),collapse = ','),']'),
+                           paste0(var,' [',paste(round(predict(readRDS('proc/covariates_BN.rds')$FSI,vec,inverse = F),1),collapse = ','),']')
+                 ),
+                 title = '', axis.title = c('Flow','Species richness')) + 
+  scale_color_discrete(name = "FSI", labels = vec) + 
+  scale_x_continuous(breaks = round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1), labels = formatC(xax, format = "e", digits = 0)) +
+  scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0)) +
+  theme_bw()
+ps
+
+ggsave('figs/FSI_int.jpg', ps,
+       width = 100,height = 100,dpi = 300,units = 'mm')
+
+
+var = 'SR_exo'
+xax = 10**seq(-1,6,2)
+yax = 10**(seq(0,4,1))
+vec = c(1,10,30,50)
+ps <- plot_model(fit, 
+                 type='pred',
+                 terms = c(paste0('Q [',paste(round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1),collapse = ','),']'),
+                           paste0(var,' [',paste(round(predict(readRDS('proc/covariates_BN.rds')$SR_exo,vec,inverse = F),1),collapse = ','),']')
+                 ),
+                 title = '', axis.title = c('Flow','Species richness')) + 
+  scale_color_discrete(name = "No exotic sp", labels = vec) + 
+  scale_x_continuous(breaks = round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1), labels = formatC(xax, format = "e", digits = 0)) +
+  scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0)) +
+  theme_bw()
+ps
+
+ggsave('figs/SRexo_int.jpg', ps,
+       width = 100,height = 100,dpi = 300,units = 'mm')
+

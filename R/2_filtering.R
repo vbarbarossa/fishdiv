@@ -71,6 +71,8 @@ tab_all <- full_join(
   left_join(read.csv('tabs/stations_paleoarea.csv') %>% as_tibble() %>% group_by(gsim.no) %>% summarise(paleoarea_extra = sum(paleoarea_extra))) %>%
   left_join(read.csv('tabs/stations_CSI.csv') %>% as_tibble()) %>%
   left_join(read.csv('tabs/stations_HFI.csv') %>% as_tibble()) %>%
+  left_join(read.csv('tabs/stations_KG.csv') %>% as_tibble()) %>%
+  left_join(read.csv('tabs/stations_realm.csv') %>% as_tibble()) %>%
   inner_join(.,sf::read_sf('spatial/stations_catchments.gpkg') %>%
                as_tibble() %>% dplyr::select(-geom,-area.est)) %>%
   inner_join(.,read.csv('tabs/stations_SR.csv'),by='gsim.no') %>%
@@ -140,6 +142,8 @@ dev.off()
     mutate(
       PREC_DELTA = abs(p_cur - p_hist)/p_cur,
       TEMP_DELTA = abs(t_cur - t_hist)/t_cur,
+      KG = as.factor(kg_class),
+      REALM = as.factor(realm_class)
       # CROP_2015 = cropland_2015_sum/cropland_2015_count,
       # CROP_1992 = cropland_1992_sum/cropland_1992_count,
       # URB = nl.mean*area.est
@@ -152,6 +156,8 @@ dev.off()
       # ID variables
       ID = gsim.no, 
       BAS = MAIN_BAS, 
+      KG,
+      REALM,
       QUALITY = quality,
       
       # Discharge covariates
@@ -214,7 +220,6 @@ apply(tab %>% select(starts_with('Q'),-QUALITY,starts_with('PREC')),2,function(x
 
 # there are 429 missing values for paleo area due to lack of overlap with basins connectivity provided -> set to 0
 tab$PALEO_AREA[is.na(tab$PALEO_AREA)] <- 0
-
 
 # adjust NA and Q<0 values
 (tab <- tab %>%
@@ -334,7 +339,7 @@ write.csv(tab_ranges,'tabs/covariates_range_values.csv',row.names = T)
 # check correlation covariates
 # raw
 covariates <- tab %>%  
-  select(-ID,-BAS, -Q_DOYMAX, -Q_DOYMIN, -SLOPE, -HFP1993, -SR_tot, -CSI) %>%
+  select(-ID,-BAS, -KG, -REALM, -Q_DOYMAX, -Q_DOYMIN, -SLOPE, -HFP1993, -SR_tot, -CSI) %>%
   rename(
     # streamflow
     "Flow mean" = "Q_MEAN", "Flow max" = "Q_MAX","Flow min" = "Q_MIN","Flow seasonality" = "Q_CV",
@@ -375,16 +380,20 @@ dev.off()
 # corvif(tab.t %>% select(-starts_with('SR'),-HFP1993,-Q_MAX, -Q_MIN, -PREC_PRES))
 
 covariates <- tab %>%  
-  select(-ID,-BAS, -SLOPE, -Q_DOYMAX, -Q_DOYMIN, -HFP1993, -SR_tot, -CSI) %>%
-  keep(is.numeric)
+  select(-ID,-BAS, -REALM, -KG, -SLOPE, -Q_DOYMAX, -Q_DOYMIN, -HFP1993, -SR_tot, -CSI) %>%
+  purrr::keep(is.numeric)
 # normalized
 covariates.t <- normalize_vars(covariates,figs_name = NA, BN_name = 'proc/covariates_BN')
 
 covariates$SR_tot <- tab$SR_tot
+covariates$KG <- tab$KG
+covariates$REALM <- tab$REALM
 covariates$BAS <- tab$BAS
 covariates$ID <- tab$ID
 
 covariates.t$SR_tot <- log10(tab$SR_tot) #use log10 transf for SR
+covariates.t$KG <- tab$KG
+covariates.t$REALM <- tab$REALM
 covariates.t$BAS <- tab$BAS
 covariates.t$ID <- tab$ID
 

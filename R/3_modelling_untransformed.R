@@ -214,18 +214,18 @@ p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
                   "Flow" = "Q","Flow seasonality" = "Q_CV",
                   
                   # habitat area, heterogeneity and isolation
-                  "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", 
+                  "Catchment area" = "AREA", "Elevation" = "ELEVATION", 
                   
                   # climate
                   "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
                   
                   # quaternary climate stability
-                  "Precipitation change" = "PREC_DELTA",
+                  # "Precipitation change" = "PREC_DELTA",
                   "Paleo area" = "PALEO_AREA",
                   
                   # anthropogenic
                   "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
-                  "Human Footprint Index (HFI)" = "HFP2009",
+                  "Human Footprint Index (HFI)" = "HFP2009", "HFI*Flow" = "I(HFP2009 * Q)",
                   "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)"
                   
                 )
@@ -252,18 +252,18 @@ export_summs(fit,
                "Flow" = "Q","Flow seasonality" = "Q_CV",
                
                # habitat area, heterogeneity and isolation
-               "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", 
+               "Catchment area" = "AREA", "Elevation" = "ELEVATION", 
                
                # climate
                "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
                
                # quaternary climate stability
-               "Precipitation change" = "PREC_DELTA",
+               # "Precipitation change" = "PREC_DELTA",
                "Paleo area" = "PALEO_AREA",
                
                # anthropogenic
                "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
-               "Human Footprint Index (HFI)" = "HFP2009",
+               "HFI*Flow" = "I(HFP2009 * Q)",
                "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)"
                
              ), to.file = "docx", file.name = 'tabs/coefficients_regression_untransformed.docx')

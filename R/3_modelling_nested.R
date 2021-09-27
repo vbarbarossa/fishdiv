@@ -43,11 +43,11 @@ lmer.glmulti<-function(formula,data,random="",...) {
 
 
 # define variables
-covariates_selection <- tab.t %>% select(-BAS,-ID,-SR_tot, -SR_exo,-starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
+covariates_selection <- tab.t %>% select(-BAS,-KG, -REALM, -ID,-SR_tot, -SR_exo,-starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
 # covariates_selection <- tab.t %>% select(starts_with('Q'),-starts_with('Q_M'),TEMP_PRES,ELEVATION) %>% colnames
 
 response_selection = 'SR_tot'
-random_term <- 'BAS'
+random_term <- 'BAS/REALM'#/KG
 # interaction_term <- c('TEMP_PRES','ELEVATION') # interactions with Q_magnitude variables
 interaction_term <- c('HFP2009','FSI') # interactions with Q_magnitude variables
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
@@ -105,7 +105,9 @@ for(Qvar in Q_magnitude){
     
     t_res <- foreach(i = seq_along(dred@objects),.combine = 'rbind') %do% {
       
-      rsq <- MuMIn::r.squaredGLMM(dred@objects[[i]])
+      
+      # rsq <- MuMIn::r.squaredGLMM(dred@objects[[i]]) #<< not working
+      rsq <- piecewiseSEM::rsquared(dred@objects[[i]])[,5:6]
       
       t <- cbind(
         data.frame(
@@ -125,7 +127,7 @@ for(Qvar in Q_magnitude){
       row.names(t) <- NULL
       return(t)
     }
-    write.csv(t_res,paste0(valerioUtils::dir_('tabs/dredging/'),'dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'),row.names = F)
+    write.csv(t_res,paste0(valerioUtils::dir_('tabs/dredging_nested/'),'dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'),row.names = F)
     
   }
   
@@ -139,7 +141,7 @@ for(Qvar in Q_magnitude){
 
 res_filtered <- foreach(Qvar = Q_magnitude) %do% {
   
-  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
+  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging_nested/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
   
   # filter out rows with correlated terms
   rows_to_filter <- numeric()
@@ -162,7 +164,7 @@ res_filtered <- foreach(Qvar = Q_magnitude) %do% {
     do.call('rbind',.) %>%
     arrange(desc(no_pred))
   
-  write.csv(dfilt,paste0('tabs/dredge_coefficients_',response_selection,'_',Qvar,'_FILTERED.csv'),row.names = F)
+  write.csv(dfilt,paste0('tabs/dredge_coefficients_nested_',response_selection,'_',Qvar,'_FILTERED.csv'),row.names = F)
   
   return(dfilt)
   
@@ -244,7 +246,7 @@ p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
     legend.box.margin=margin(-5,-10,-10,-10)
   )
 p
-ggsave('figs/coefficients_regression.jpg', p,width = 150, height = 150, units = 'mm', dpi = 600)
+ggsave('figs/coefficients_regression_nested.jpg', p,width = 150, height = 150, units = 'mm', dpi = 600)
 
 export_summs(fit,
              model.names = Q_magnitude,
@@ -268,7 +270,7 @@ export_summs(fit,
                "Human Footprint Index (HFI)" = "HFP2009",
                "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)"
                
-             ), to.file = "docx", file.name = 'tabs/coefficients_regression.docx')
+             ), to.file = "docx", file.name = 'tabs/coefficients_regression_nested.docx')
 
 
 

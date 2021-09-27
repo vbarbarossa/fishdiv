@@ -43,93 +43,154 @@ lmer.glmulti<-function(formula,data,random="",...) {
 
 
 # define variables
-covariates_selection <- tab.t %>% select(-BAS,-ID,-SR_tot, -SR_exo,-starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
+covariates_selection <- tab.t %>% select(-BAS,-KG,-ID,-SR_tot, -SR_exo,-starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
 # covariates_selection <- tab.t %>% select(starts_with('Q'),-starts_with('Q_M'),TEMP_PRES,ELEVATION) %>% colnames
 
 response_selection = 'SR_tot'
-random_term <- 'BAS'
+random_term <- 'BAS/KG'#/KG
 # interaction_term <- c('TEMP_PRES','ELEVATION') # interactions with Q_magnitude variables
 interaction_term <- c('HFP2009','FSI') # interactions with Q_magnitude variables
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
 
-for(Qvar in Q_magnitude){
+Qvar = Q_magnitude[1]
+
+df <- tab.t
+
+fit <- lmer(paste(
+  response_selection,"~", # response
+  paste(c(Qvar,covariates_selection),collapse=" + "), # fixed terms
+  '+',
+  paste0('I(',interaction_term,'*',Qvar,')',collapse = ' + '), # interaction terms with Qvar
+  '+',
+  # paste0('I(',interaction_term,'*AREA)',collapse = ' + '), # interaction terms with Area
+  # '+',
+  paste0("(1|",random_term,")") # random term
+),
+data = df)
+
+dp <- df %>% select(SR_tot,KG) %>% mutate(pred = predict(fit))
+
+library(ggplot2)
+table(dp$KG)
+
+dp <- df
+dp$KG <- as.factor(dp$KG)
+levels(dp$KG) <- paste0(LETTERS[1:5],'(',table(df$KG) %>% as.character,')')
+
+
+ggplot(dp,aes(x=HFP2009,y=SR_tot,color=KG)) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method = 'lm',color='black') +
+  facet_wrap('KG')
+
+ggplot(dp,aes(x=FSI,y=SR_tot,color=KG)) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method = 'lm',color='black') +
+  facet_wrap('KG')
+
+random_term = 'BAS'
+fit <- lmer(paste(
+  response_selection,"~", # response
+  paste(c(Qvar,covariates_selection),collapse=" + "), # fixed terms
+  '+',
+  paste0('I(',interaction_term,'*',Qvar,')',collapse = ' + '), # interaction terms with Qvar
+  '+',
+  # paste0('I(',interaction_term,'*AREA)',collapse = ' + '), # interaction terms with Area
+  # '+',
+  paste0("(1|",random_term,")") # random term
+),
+data = df %>% filter(KG == 1))
+
+summary(fit)
+
+
+fit <- lmer('SR_tot ~ Q_MEAN*HFP2009 + (1 | BAS/KG)',
+            data = df)
+piecewiseSEM::rsquared(fit)
+jtools::summ(fit)
+
+summary(lm('SR_tot ~ Q_MEAN*HFP2009',
+           data = df %>% filter(KG == 1)))
+
+fit1 <- lm('SR_tot ~ Q_MEAN*HFP2009',
+            data = df)
+
+fit2 <- lmer('SR_tot ~ Q_MEAN*HFP2009 + (1 | BAS)',
+             data = df)
+
+fit3 <- lmer('SR_tot ~ Q_MEAN*HFP2009 + (1 | BAS/KG)',
+            data = df)
+
+jtools::summ(fit1)
+jtools::summ(fit2)
+jtools::summ(fit3)
+
+
+for(nv in 1:(length(covariates_selection)+length(interaction_term)+1)){
   
-  df <- tab.t
+  dred <- glmulti::glmulti(formula(fit,
+                                   fixed.only=TRUE),
+                           random=paste0("(1|",random_term,")"),
+                           data=df, method="h",
+                           conseq=3, crit=BIC,
+                           fitfunc=lmer.glmulti,
+                           includeobjects = TRUE,
+                           confsetsize=1000, # The number of models to be looked for, i.e. the size of the returned confidence set.
+                           popsize = 100, # The population size for the genetic algorithm
+                           mutrate = 10^-3, # The per locus (i.e. per term) mutation rate for genetic algorithm, between 0 and 1
+                           sexrate = 0.1, # The rate of sexual reproduction for the genetic algorithm, between 0 and 1
+                           imm = 0.3, # The rate of immigration for the genetic algorithm, between 0 and 1
+                           deltaM = 2,
+                           minsize = nv,
+                           maxsize = nv,
+                           # chunk = i,
+                           # chunks = 8,
+                           # report = FALSE,
+                           plotty = FALSE,
+                           intercept=TRUE, marginality=FALSE, level=1)
   
-  fit <- lmer(paste(
-    response_selection,"~", # response
-    paste(c(Qvar,covariates_selection),collapse=" + "), # fixed terms
-    '+',
-    paste0('I(',interaction_term,'*',Qvar,')',collapse = ' + '), # interaction terms with Qvar
-    '+',
-    # paste0('I(',interaction_term,'*AREA)',collapse = ' + '), # interaction terms with Area
-    # '+',
-    paste0("(1|",random_term,")") # random term
-  ),
-  data = df)
-  for(nv in 1:(length(covariates_selection)+length(interaction_term)+1)){
-    
-    dred <- glmulti::glmulti(formula(fit,
-                                     fixed.only=TRUE),
-                             random=paste0("(1|",random_term,")"),
-                             data=df, method="h",
-                             conseq=3, crit=BIC,
-                             fitfunc=lmer.glmulti,
-                             includeobjects = TRUE,
-                             confsetsize=1000, # The number of models to be looked for, i.e. the size of the returned confidence set.
-                             popsize = 100, # The population size for the genetic algorithm
-                             mutrate = 10^-3, # The per locus (i.e. per term) mutation rate for genetic algorithm, between 0 and 1
-                             sexrate = 0.1, # The rate of sexual reproduction for the genetic algorithm, between 0 and 1
-                             imm = 0.3, # The rate of immigration for the genetic algorithm, between 0 and 1
-                             deltaM = 2,
-                             minsize = nv,
-                             maxsize = nv,
-                             # chunk = i,
-                             # chunks = 8,
-                             # report = FALSE,
-                             plotty = FALSE,
-                             intercept=TRUE, marginality=FALSE, level=1)
-    
-    coef_tab <- data.frame(
-      matrix(ncol = 1 + 
-               length(covariates_selection) + 
-               length(interaction_term) + 
-               length(Q_magnitude),
-             nrow = 1))
-    if(length(interaction_term) > 0){ 
-      colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection,paste0('I(',interaction_term,' * ',Qvar,')')) 
-    }else{
-      colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection)
-    }
-    
-    
-    t_res <- foreach(i = seq_along(dred@objects),.combine = 'rbind') %do% {
-      
-      rsq <- MuMIn::r.squaredGLMM(dred@objects[[i]])
-      
-      t <- cbind(
-        data.frame(
-          response = dred@formulas[[i]] %>% as.character() %>% .[2],
-          model = dred@formulas[[i]] %>% as.character() %>% .[3],
-          BIC = dred@crits[i],
-          R2_marginal = rsq[1,1],
-          R2_conditional = rsq[1,2]
-        ),
-        coef_tab
-      )
-      
-      coef <- fixef(dred@objects[[i]])
-      
-      for(j in seq_along(coef)) t[1,names(coef[j])] <- as.numeric(coef[j])
-      
-      row.names(t) <- NULL
-      return(t)
-    }
-    write.csv(t_res,paste0(valerioUtils::dir_('tabs/dredging/'),'dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'),row.names = F)
-    
+  coef_tab <- data.frame(
+    matrix(ncol = 1 + 
+             length(covariates_selection) + 
+             length(interaction_term) + 
+             length(Q_magnitude),
+           nrow = 1))
+  if(length(interaction_term) > 0){ 
+    colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection,paste0('I(',interaction_term,' * ',Qvar,')')) 
+  }else{
+    colnames(coef_tab) <- c('(Intercept)',Q_magnitude,covariates_selection)
   }
   
+  
+  t_res <- foreach(i = seq_along(dred@objects),.combine = 'rbind') %do% {
+    
+    
+    # rsq <- MuMIn::r.squaredGLMM(dred@objects[[i]]) #<< not working
+    rsq <- piecewiseSEM::rsquared(dred@objects[[i]])[,5:6]
+    
+    t <- cbind(
+      data.frame(
+        response = dred@formulas[[i]] %>% as.character() %>% .[2],
+        model = dred@formulas[[i]] %>% as.character() %>% .[3],
+        BIC = dred@crits[i],
+        R2_marginal = rsq[1,1],
+        R2_conditional = rsq[1,2]
+      ),
+      coef_tab
+    )
+    
+    coef <- fixef(dred@objects[[i]])
+    
+    for(j in seq_along(coef)) t[1,names(coef[j])] <- as.numeric(coef[j])
+    
+    row.names(t) <- NULL
+    return(t)
+  }
+  # write.csv(t_res,paste0(valerioUtils::dir_('tabs/dredging_nested/'),'dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'),row.names = F)
+  
 }
+
+
 
 # make a table with the best models with decreasing number of variables
 # terms mutually exclusive given the high pearson's r (>= 0.7)
@@ -139,7 +200,7 @@ for(Qvar in Q_magnitude){
 
 res_filtered <- foreach(Qvar = Q_magnitude) %do% {
   
-  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
+  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging_nested/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
   
   # filter out rows with correlated terms
   rows_to_filter <- numeric()
@@ -162,7 +223,7 @@ res_filtered <- foreach(Qvar = Q_magnitude) %do% {
     do.call('rbind',.) %>%
     arrange(desc(no_pred))
   
-  write.csv(dfilt,paste0('tabs/dredge_coefficients_',response_selection,'_',Qvar,'_FILTERED.csv'),row.names = F)
+  write.csv(dfilt,paste0('tabs/dredge_coefficients_nested_',response_selection,'_',Qvar,'_FILTERED.csv'),row.names = F)
   
   return(dfilt)
   
@@ -244,7 +305,7 @@ p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
     legend.box.margin=margin(-5,-10,-10,-10)
   )
 p
-ggsave('figs/coefficients_regression.jpg', p,width = 150, height = 150, units = 'mm', dpi = 600)
+ggsave('figs/coefficients_regression_nested.jpg', p,width = 150, height = 150, units = 'mm', dpi = 600)
 
 export_summs(fit,
              model.names = Q_magnitude,
@@ -268,7 +329,7 @@ export_summs(fit,
                "Human Footprint Index (HFI)" = "HFP2009",
                "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)"
                
-             ), to.file = "docx", file.name = 'tabs/coefficients_regression.docx')
+             ), to.file = "docx", file.name = 'tabs/coefficients_regression_nested.docx')
 
 
 

@@ -1,5 +1,5 @@
 # set wd
-knitr::opts_knit$set(root.dir = 'C:/Users/barbarossav/Documents/projects/SDRs')
+# knitr::opts_knit$set(root.dir = 'C:/Users/barbarossav/Documents/projects/SDRs')
 
 #' load assigned variables from MASTER.R
 source('R/MASTER.R')
@@ -62,7 +62,7 @@ normalize_vars <- function(t,figs_name = 'figs/histograms', BN_name = 'proc/BN')
   
 }
 
-tab <- read.csv('tabs/input_tab_divAREA.csv') %>% split(.$BAS) %>% lapply(.,function(x) x[x$AREA == max(x$AREA),]) %>% do.call('rbind',.) %>% as_tibble()
+tab <- read.csv('tabs/input_tab.csv') %>% split(.$BAS) %>% lapply(.,function(x) x[x$AREA == max(x$AREA),]) %>% do.call('rbind',.) %>% as_tibble()
 # tab.t <- read.csv('tabs/input_tab_transformed_divAREA.csv') %>% filter(ID %in% tab$ID)
 
 covariates <- tab %>%  
@@ -71,14 +71,15 @@ covariates <- tab %>%
     # streamflow
     "Flow mean" = "Q_MEAN", "Flow max" = "Q_MAX","Flow min" = "Q_MIN","Flow seasonality" = "Q_CV",
     # habitat area, heterogeneity and isolation
-    "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION","Slope" = "SLOPE",
+    "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION",
     # climate
     "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
     # quaternary climate stability
-    "Precipitation change" = "PREC_DELTA", "Temperature change" = "TEMP_DELTA",
+    "Precipitation change" = "PREC_DELTA", "Temperature change" = "TEMP_DELTA", "Paleo area" = "PALEO_AREA",
     # anthropogenic
-    "Human Footprint Index" = "HFP2009", 
-    "Fragmentation Status Index" = "FSI"
+    "Human Footprint Index" = "HFP2009",
+    "Fragmentation Status Index" = "FSI",
+    "No. exotic species" = "SR_exo"
   )
 # normalized
 covariates.t <- normalize_vars(covariates,figs_name = 'figs/covariates_hist_majorbasins', BN_name = 'proc/covariates_BN_majorbasins')
@@ -123,7 +124,7 @@ covariates_selection <- tab.t %>% select(-BAS,-ID,-starts_with('SR'), -starts_wi
 
 response_selection = 'SR_tot'
 # random_term <- 'BAS'
-interaction_term <- c('TEMP_PRES','ELEVATION') # interactions with Q_magnitude variables
+interaction_term <- c('HFP2009','FSI','SR_exo') # interactions with Q_magnitude variables
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
 
 for(Qvar in Q_magnitude){
@@ -135,9 +136,6 @@ for(Qvar in Q_magnitude){
     paste(c(Qvar,covariates_selection),collapse=" + "), # fixed terms
     '+',
     paste0('I(',interaction_term,'*',Qvar,')',collapse = ' + ') # interaction terms with Qvar
-    
-    # '+',
-    # paste0("(1|",random_term,")") # random term
   ),
   data = df)
   for(nv in 1:(length(covariates_selection)+length(interaction_term)+1)){
@@ -215,9 +213,9 @@ res_filtered <- foreach(Qvar = Q_magnitude) %do% {
   # filter out rows with correlated terms
   rows_to_filter <- numeric()
   for(j in 1:nrow(d)){
-    if(sum(as.integer(is.na(d[j,c('ELEVATION','SLOPE')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
+    # if(sum(as.integer(is.na(d[j,c('ELEVATION','SLOPE')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
     if(sum(as.integer(is.na(d[j,c('TEMP_PRES','TEMP_DELTA')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
-    if(sum(as.integer(is.na(d[j,c('Q_MIN','Q_CV')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
+    # if(sum(as.integer(is.na(d[j,c('Q_MIN','Q_CV')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
     if(sum(as.integer(is.na(d[j,c('AREA','Q_MEAN')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
     if(sum(as.integer(is.na(d[j,c('AREA','Q_MAX')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
   }
@@ -280,14 +278,24 @@ p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
            coefs = c(
              # streamflow
              "Flow" = "Q","Flow seasonality" = "Q_CV",
+             
              # habitat area, heterogeneity and isolation
-             "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", "Slope" = "SLOPE", "Elevation*Flow" = "I(ELEVATION * Q)", 
+             "Catchment area" = "AREA", "Elevation" = "ELEVATION", 
+             
              # climate
-             "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", "Temperature*Flow" = "I(TEMP_PRES * Q)", 
+             "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
+             
              # quaternary climate stability
-             "Holocene precipitation change" = "PREC_DELTA",
+             # "Precipitation change" = "PREC_DELTA",
+             "Paleo area" = "PALEO_AREA",
+             
              # anthropogenic
-             "Human Footprint Index" = "HFP2009", "Fragmentation Status Index" = "FSI"
+             # "No. exotic species" = "SR_exo", 
+             "Exotic*Flow" = "I(SR_exo * Q)",
+             "Human Footprint Index (HFI)" = "HFP2009",
+             "Fragmentation Status Index (FSI)" = "FSI", 
+             "FSI*Flow" = "I(FSI * Q)"
+             
            )) +
   theme_bw() +
   theme(
@@ -308,15 +316,25 @@ export_summs(fit,
            colors = colorspace::sequential_hcl(4,'Viridis')[1:3],
            coefs = c(
              # streamflow
-             "Streamflow" = "Q","Streamflow Seasonality" = "Q_CV",
+             "Flow" = "Q","Flow seasonality" = "Q_CV",
+             
              # habitat area, heterogeneity and isolation
-             "Catchment Area" = "AREA", "Slope" = "SLOPE", "Elevation*Streamflow" = "I(ELEVATION * Q)",
+             "Catchment area" = "AREA", "Elevation" = "ELEVATION", 
+             
              # climate
-             "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", "Temperature*Streamflow" = "I(TEMP_PRES * Q)", 
+             "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
+             
              # quaternary climate stability
+             # "Precipitation change" = "PREC_DELTA",
+             "Paleo area" = "PALEO_AREA",
              
              # anthropogenic
-             "Human Footprint Index" = "HFP2009",  "Fragmentation Status Index" = "FSI"
+             # "No. exotic species" = "SR_exo", 
+             "Exotic*Flow" = "I(SR_exo * Q)",
+             "Human Footprint Index (HFI)" = "HFP2009",
+             "Fragmentation Status Index (FSI)" = "FSI", 
+             "FSI*Flow" = "I(FSI * Q)"
+             
            ), to.file = "docx", file.name = 'tabs/coefficients_regression_majorbasins.docx')
 
 # plot(tab.t$HFP2009,tab$SR_tot/(tab$AREA**1) %>% log10)
