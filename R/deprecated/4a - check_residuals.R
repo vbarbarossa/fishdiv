@@ -44,8 +44,7 @@ lmer.glmulti<-function(formula,data,random="",...) {
 
 
 # define variables
-covariates_selection <- tab.t %>% select(-BAS,-ID,-SR_tot,-SR_exo, -starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
-# covariates_selection <- tab.t %>% select(starts_with('Q'),-starts_with('Q_M'),TEMP_PRES,ELEVATION) %>% colnames
+covariates_selection <- tab.t %>% select(-BAS,-KG, -REALM, -ID,-SR_tot, -SR_exo,-starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
 
 response_selection = 'SR_tot'
 random_term <- 'BAS'
@@ -105,12 +104,9 @@ for(i in 1:3){
 
 mod <- fit[[1]]
 
-# car::residualPlots(mod) # does not work for lmer
-
 library(redres)
-
-plot(mod)
-plot_redres(mod, type = 'std_mar')
+# plot(mod)
+# plot_redres(mod, type = 'std_mar')
 
 dfr <- data.frame(res = compute_redres(mod),
                   var = predict(mod) %>% as.numeric,
@@ -131,7 +127,10 @@ p <- ggplot(dfr) +
   theme_bw()
 ggsave('figs/residuals_Qmean.jpg',width = 10, height = 10)
 
+p2 <- ggResidpanel::resid_panel(mod,plots='all')
+ggsave('figs/residuals_diagnostics_Qmean.jpg',p2,width = 10, height = 10)
 
+# refit residuals based on unstransformed vars --------------------------------------
 i=1
 Qvar <- Q_magnitude[i]
 mod <- paste0('SR_tot ~',
@@ -139,36 +138,11 @@ mod <- paste0('SR_tot ~',
               ' + ',
               paste0("(1|",random_term,")"))
 mod <- gsub(Q_magnitude[i],'Q',mod)
-df <- tab.t
-df$SR_tot <- tab$SR_tot
+
+df <- tab
 colnames(df) <- gsub(Q_magnitude[i],'Q',colnames(df))
 
-mp <- glmer('SR_tot ~ Q + PREC_PRES + TEMP_PRES + PREC_DELTA + AREA + TI + ELEVATION + HFP2009 + FSI + I(FSI * Q) + (1|BAS)',
-            data = df, family = 'poisson')
-
-mn <- glmer.nb('SR_tot ~ Q + PREC_PRES + TEMP_PRES + PREC_DELTA + AREA + TI + ELEVATION + HFP2009 + FSI + I(FSI * Q) + (1|BAS)',
-            data = df) # coef make more sense than poisson and residuals are less overdisperse!!
-
-# dfu <- tab
-# for(j in c(Q_magnitude,covariates_selection)) dfu[,j] <- scale(tab[,j]) %>% as.numeric()
-# 
-# mnu <- glmer.nb('SR_tot ~ Q_MEAN + PREC_PRES + TEMP_PRES + PREC_DELTA + AREA + TI + ELEVATION + HFP2009 + FSI + I(FSI * Q_MEAN) + (1|BAS)',
-#                data = dfu) # coef make more sense!!
-
-
-df <- tab.t
-colnames(df) <- gsub(Q_magnitude[i],'Q',colnames(df))
-df$SR_tot <- log(tab$SR_tot)
-ml <- lmer('SR_tot ~ Q + PREC_PRES + TEMP_PRES + PREC_DELTA + AREA + TI + ELEVATION + HFP2009 + FSI + I(FSI * Q) + (1|BAS)',
-            data = df)
-
-ggResidpanel::resid_panel(ml,plots='all')
-ggResidpanel::resid_panel(mn,plots='all')
-
-MuMIn::r.squaredGLMM(mp)
-MuMIn::r.squaredGLMM(mn)
-MuMIn::r.squaredGLMM(ml)
-
+mod <- lmer(mod, data = df)
 
 dfr <- data.frame(res = compute_redres(mod),
                   var = predict(mod) %>% as.numeric,
@@ -187,6 +161,8 @@ p <- ggplot(dfr) +
   geom_point(aes(x = var, y = res)) +
   facet_wrap('name',ncol = 4,scales = 'free_x') +
   theme_bw()
-ggsave('figs/residuals_Qmean.jpg',width = 10, height = 10)
+ggsave('figs/residuals_untransformed_Qmean.jpg',p,width = 10, height = 10)
 
+p2 <- ggResidpanel::resid_panel(mod,plots='all')
+ggsave('figs/residuals_diagnostics_untransformed_Qmean.jpg',p2,width = 10, height = 10)
 

@@ -43,7 +43,7 @@ lmer.glmulti<-function(formula,data,random="",...) {
 
 
 # define variables
-covariates_selection <- tab.t %>% select(-BAS,-ID,-SR_tot, -SR_exo,-starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
+covariates_selection <- tab.t %>% select(-BAS,-KG, -REALM, -ID,-SR_tot, -SR_exo,-starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
 # covariates_selection <- tab.t %>% select(starts_with('Q'),-starts_with('Q_M'),TEMP_PRES,ELEVATION) %>% colnames
 
 response_selection = 'SR_tot'
@@ -146,6 +146,8 @@ res_filtered <- foreach(Qvar = Q_magnitude) %do% {
   for(j in 1:nrow(d)){
     # if(sum(as.integer(is.na(d[j,c('ELEVATION','SLOPE')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
     if(sum(as.integer(is.na(d[j,c('TEMP_PRES','TEMP_DELTA')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
+    if(sum(as.integer(is.na(d[j,c('TEMP_PRES','LAT')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
+    if(sum(as.integer(is.na(d[j,c('TEMP_DELTA','LAT')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
     if(sum(as.integer(is.na(d[j,c('Q_MIN','Q_CV')]))) == 0) rows_to_filter <- c(rows_to_filter,j)
   }
   rows_to_filter <- unique(rows_to_filter)
@@ -215,20 +217,24 @@ p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
                   # streamflow
                   "Flow" = "Q","Flow seasonality" = "Q_CV",
                   
-                  # habitat area, heterogeneity and isolation
-                  "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", 
-                  
-                  # climate
-                  "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
-                  
-                  # quaternary climate stability
-                  "Precipitation change" = "PREC_DELTA",
-                  "Paleo area" = "PALEO_AREA",
-                  
                   # anthropogenic
                   # "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
                   "Human Footprint Index (HFI)" = "HFP2009",
-                  "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)"
+                  "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)",
+                  
+                  # habitat area, heterogeneity and isolation
+                  "Catchment area" = "AREA", 
+                  "Elevation" = "ELEVATION",
+                  "Topographic Index" = "TI", 
+                  
+                  # climate
+                  "Precipitation" = "PREC_PRES", 
+                  "Temperature" = "TEMP_PRES",
+                  
+                  # quaternary climate stability
+                  "Precipitation change" = "PREC_DELTA",
+                  "Paleo area" = "PALEO_AREA"
+                  
                   
                 )
 ) +
@@ -253,20 +259,24 @@ export_summs(fit,
                # streamflow
                "Flow" = "Q","Flow seasonality" = "Q_CV",
                
-               # habitat area, heterogeneity and isolation
-               "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION", 
-               
-               # climate
-               "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
-               
-               # quaternary climate stability
-               "Precipitation change" = "PREC_DELTA",
-               "Paleo area" = "PALEO_AREA",
-               
                # anthropogenic
                # "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
                "Human Footprint Index (HFI)" = "HFP2009",
-               "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)"
+               "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)",
+               
+               # habitat area, heterogeneity and isolation
+               "Catchment area" = "AREA", 
+               "Elevation" = "ELEVATION",
+               "Topographic Index" = "TI", 
+               
+               # climate
+               "Precipitation" = "PREC_PRES", 
+               "Temperature" = "TEMP_PRES",
+               
+               # quaternary climate stability
+               "Precipitation change" = "PREC_DELTA",
+               "Paleo area" = "PALEO_AREA"
+               
                
              ), to.file = "docx", file.name = 'tabs/coefficients_regression.docx')
 

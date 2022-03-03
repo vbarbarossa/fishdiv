@@ -66,7 +66,7 @@ tab <- read.csv('tabs/input_tab.csv') %>% split(.$BAS) %>% lapply(.,function(x) 
 # tab.t <- read.csv('tabs/input_tab_transformed_divAREA.csv') %>% filter(ID %in% tab$ID)
 
 covariates <- tab %>%  
-  select(-ID,-BAS, -SR_tot) %>%
+  select(-ID,-BAS, -SR_tot, -SR_exo) %>%
   rename(
     # streamflow
     "Flow mean" = "Q_MEAN", "Flow max" = "Q_MAX","Flow min" = "Q_MIN","Flow seasonality" = "Q_CV",
@@ -78,8 +78,7 @@ covariates <- tab %>%
     "Precipitation change" = "PREC_DELTA", "Temperature change" = "TEMP_DELTA", "Paleo area" = "PALEO_AREA",
     # anthropogenic
     "Human Footprint Index" = "HFP2009",
-    "Fragmentation Status Index" = "FSI",
-    "No. exotic species" = "SR_exo"
+    "Fragmentation Status Index" = "FSI"
   )
 # normalized
 covariates.t <- normalize_vars(covariates,figs_name = 'figs/covariates_hist_majorbasins', BN_name = 'proc/covariates_BN_majorbasins')
@@ -94,7 +93,7 @@ corrplot::corrplot(cor(covariates.t, use = "pairwise.complete.obs"), method = 'n
 dev.off()
 
 covariates <- tab %>%  
-  select(-ID,-BAS, -SR_tot)
+  select(-ID,-BAS, -SR_tot, -SR_exo)
 # normalized
 covariates.t <- normalize_vars(covariates,figs_name = NA, BN_name = 'proc/covariates_BN_majorbasins')
 
@@ -109,22 +108,13 @@ covariates.t$ID <- tab$ID
 tab <- covariates
 tab.t <- covariates.t
 
-# lmer.glmulti<-function(formula,data,random="",...) {
-#   newf <- formula
-#   newf[[3]] <- substitute(f+r,
-#                           list(f=newf[[3]],
-#                                r=reformulate(random)[[2]]))
-#   lme4::lmer(newf,data=data,
-#              REML=FALSE,...)
-# }
-
 # define variables
-covariates_selection <- tab.t %>% select(-BAS,-ID,-starts_with('SR'), -starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
+covariates_selection <- tab.t %>% select(-BAS,-ID,-REALM,-KG,-starts_with('SR'), -starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
 # covariates_selection <- tab.t %>% select(starts_with('Q'),-starts_with('Q_M'),TEMP_PRES,ELEVATION) %>% colnames
 
 response_selection = 'SR_tot'
 # random_term <- 'BAS'
-interaction_term <- c('HFP2009','FSI','SR_exo') # interactions with Q_magnitude variables
+interaction_term <- c('HFP2009','FSI') # interactions with Q_magnitude variables
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
 
 for(Qvar in Q_magnitude){
@@ -272,30 +262,34 @@ for(i in 1:3){
 
 library(jtools); library(ggplot2)
 
+# check common vars
+ll <- character()
+for(j in 1:3) ll <- c(ll,coefficients(fit[[j]]) %>% names())
+ll %>% unique
+
 p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
            model.names = c('Minimum flow','Mean flow','Maximum flow'),
            colors = colorspace::sequential_hcl(4,'Viridis')[1:3],
            coefs = c(
+             
              # streamflow
              "Flow" = "Q","Flow seasonality" = "Q_CV",
              
+             # anthropogenic
+             # "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
+             "Human Footprint Index (HFI)" = "HFP2009",
+             "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)",
+             
              # habitat area, heterogeneity and isolation
-             "Catchment area" = "AREA", "Elevation" = "ELEVATION", 
+             "Catchment area" = "AREA", 
+             "Elevation" = "ELEVATION",
              
              # climate
-             "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
+             "Precipitation" = "PREC_PRES", 
+             "Temperature" = "TEMP_PRES",
              
              # quaternary climate stability
-             # "Precipitation change" = "PREC_DELTA",
-             "Paleo area" = "PALEO_AREA",
-             
-             # anthropogenic
-             # "No. exotic species" = "SR_exo", 
-             "Exotic*Flow" = "I(SR_exo * Q)",
-             "Human Footprint Index (HFI)" = "HFP2009",
-             "Fragmentation Status Index (FSI)" = "FSI", 
-             "FSI*Flow" = "I(FSI * Q)"
-             
+              "Paleo area" = "PALEO_AREA"
            )) +
   theme_bw() +
   theme(
@@ -318,22 +312,21 @@ export_summs(fit,
              # streamflow
              "Flow" = "Q","Flow seasonality" = "Q_CV",
              
+             # anthropogenic
+             # "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
+             "Human Footprint Index (HFI)" = "HFP2009",
+             "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)",
+             
              # habitat area, heterogeneity and isolation
-             "Catchment area" = "AREA", "Elevation" = "ELEVATION", 
+             "Catchment area" = "AREA", 
+             "Elevation" = "ELEVATION",
              
              # climate
-             "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
+             "Precipitation" = "PREC_PRES", 
+             "Temperature" = "TEMP_PRES",
              
              # quaternary climate stability
-             # "Precipitation change" = "PREC_DELTA",
-             "Paleo area" = "PALEO_AREA",
-             
-             # anthropogenic
-             # "No. exotic species" = "SR_exo", 
-             "Exotic*Flow" = "I(SR_exo * Q)",
-             "Human Footprint Index (HFI)" = "HFP2009",
-             "Fragmentation Status Index (FSI)" = "FSI", 
-             "FSI*Flow" = "I(FSI * Q)"
+             "Paleo area" = "PALEO_AREA"
              
            ), to.file = "docx", file.name = 'tabs/coefficients_regression_majorbasins.docx')
 

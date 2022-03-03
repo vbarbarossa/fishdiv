@@ -23,10 +23,11 @@ valerioUtils::libinv(c('dplyr','sf'))
 #' Reliable yearly values are selected following Gudmundsson et al., 2018:
 #' *Index values at a yearly time step are reliable if at least 350 daily observations are declared reliable.*
 
+yr_th <- 10
 # use the homogeneity table to get a list of stations with MIN_MONITORING_YEARS or more good years of record
 stations_selection <- read.csv(paste0(GSIM_dir,'GSIM_indices/HOMOGENEITY/yearly_homogeneity.csv')) %>%
   as_tibble() %>%
-  filter(number.good.time.steps >= 10) %>%
+  filter(number.good.time.steps >= yr_th) %>%
   select(gsim.no,ends_with('step'),ends_with('steps'))
 
 # scan through these stations and compute long-term mean of indices provided
@@ -36,7 +37,9 @@ stations_indices <- lapply( # use lapply function that can be easily parallelize
   function(x){
     tab <- read.csv(paste0(GSIM_dir,'GSIM_indices/TIMESERIES/yearly/',x,'.year'),skip = 21) %>% #skip first 21 rows which are not tabulated
       dplyr::filter(n.available >= 350) %>%
-      select(-date,-n.missing,-n.available) %>%
+      mutate(year = lapply(date,function(x) strsplit(x,'-')[[1]][1]) %>% as.numeric) %>% 
+      # filter(year >= 1950) %>%
+      select(-date,-n.missing,-n.available,-year) %>%
       #some files have been encoded as both csv and tab-delim
       #therefore I need to clean the strings from extra '\t' separators and read them again as numeric
       mutate_all(function(y) gsub('[\r\n\t]', '',y)) %>%
@@ -46,13 +49,20 @@ stations_indices <- lapply( # use lapply function that can be easily parallelize
       # and then convert to numeric to avoid warning messages
       mutate_all(as.numeric)
     
+    # if(nrow(tab) >= yr_th){
     return(
-      bind_cols(data.frame(gsim.id = x),as.data.frame(t(colMeans(tab))) )
-    )
+      bind_cols(data.frame(gsim.id = x,no_years = nrow(tab)),as.data.frame(t(colMeans(tab))) )
+    ) 
+    # }
   }
 ) %>% do.call('rbind',.) %>%
-  full_join(stations_selection,., by = c('gsim.no' = 'gsim.id'))
+  right_join(stations_selection,., by = c('gsim.no' = 'gsim.id'))
 Sys.time() - start_time #~6 min
+
+# # check total no of years
+# sum(stations_indices$no_years[stations_indices$gsim.no %in% tab$ID]) # tab is final tab
+
+stations_indices <- stations_indices %>% electe(-no_years)
 
 #' ## Physical attributes
 #' 

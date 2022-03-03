@@ -1,5 +1,9 @@
-# set wd
-# knitr::opts_knit$set(root.dir = '~/projects/fishdiv')
+
+################################################################################
+# DISCLAIMER: many parts of this script are no longer used for the modelling   #
+# presented int he paper as automated transformations of the covariates have   #
+# been dropped                                                                 #
+################################################################################
 
 #' load assigned variables from MASTER.R
 source('R/MASTER.R')
@@ -24,11 +28,27 @@ normalize_vars <- function(t,figs_name = 'figs/histograms', BN_name = 'proc/BN')
   BN <- list()
   t.t <- foreach(i = 1:length(variables_to_transform),.combine = 'cbind') %do% {
     
-    BN[[i]] <- bestNormalize(as.data.frame(t)[,variables_to_transform[i]],allow_orderNorm = FALSE,standardize = TRUE)
-    d <- as.data.frame(BN[[i]]$x.t)
-    colnames(d) <- variables_to_transform[i] 
-    return( d )
+    name <- variables_to_transform[i]
     
+    if(length(grep(paste(c('Q_','Discharge'),collapse='|'),name)) == 0){
+      
+      BN[[i]] <- bestNormalize(as.data.frame(t)[,name],allow_orderNorm = FALSE,standardize = TRUE)
+      d <- as.data.frame(BN[[i]]$x.t)
+      colnames(d) <- name
+    }else{
+      if(length(grep(paste(c('MIN','min'),collapse='|'),name)) == 0){
+        BN[[i]] <- paste0(name,': manually transformed using log10(x)')
+        d <- data.frame(x = scale(log10(as.data.frame(t)[,name])))
+        colnames(d) <- name
+      }else{
+        val <- as.data.frame(t)[,name]
+        a = min(val[val>0])
+        BN[[i]] <- paste0(name,': manually transformed using log10(x+a), where a=min(x>0)=',a)
+        d <- data.frame(x = scale(log10(val+a)))
+        colnames(d) <- name
+      }
+    }
+    return( d )
   }
   names(BN) <- variables_to_transform
   
@@ -89,12 +109,13 @@ flow_ind.t <- normalize_vars(flow_ind,figs_name = 'figs/flow_indices_hist', BN_n
 
 # corr matrix
 jpeg('figs/corrplot_initial_flow_indices.jpg',width = 200, height = 200, res = 600, units = 'mm')
-corrplot::corrplot(cor(flow_ind, use = "pairwise.complete.obs"), method = 'number', type = 'lower',number.cex = 0.8)
+corrplot::corrplot(cor(flow_ind, method = 'spearman', use = "pairwise.complete.obs"), method = 'number', type = 'lower',number.cex = 0.8)
 dev.off()
 
-jpeg('figs/corrplot_initial_flow_indices_normalized.jpg',width = 200, height = 200, res = 600, units = 'mm')
-corrplot::corrplot(cor(flow_ind.t, use = "pairwise.complete.obs"), method = 'number', type = 'lower',number.cex = 0.8)
-dev.off()
+# not needed as we are using spearman rank correlation now --> values are indeed very similar
+# jpeg('figs/corrplot_initial_flow_indices_normalized.jpg',width = 200, height = 200, res = 600, units = 'mm')
+# corrplot::corrplot(cor(flow_ind.t, use = "pairwise.complete.obs"), method = 'number', type = 'lower',number.cex = 0.8)
+# dev.off()
 
 # # check dams GOOD2 vs GRanD
 # plot(log10(tab_all$dams_good2_no),log10(tab_all$no.dams))
@@ -171,6 +192,7 @@ dev.off()
       # Ecosystem productivity
       PREC_PRES = p_cur, 
       TEMP_PRES = t_cur, 
+      LAT = lat.new,
       
       # Quaternary climate stabolity
       PREC_DELTA, 
@@ -339,20 +361,19 @@ write.csv(tab_ranges,'tabs/covariates_range_values.csv',row.names = T)
 # check correlation covariates
 # raw
 covariates <- tab %>%  
-  select(-ID,-BAS, -KG, -REALM, -Q_DOYMAX, -Q_DOYMIN, -SLOPE, -HFP1993, -SR_tot, -CSI) %>%
+  select(-ID,-BAS, -KG, -REALM, -Q_DOYMAX, -Q_DOYMIN, -SLOPE, -HFP1993, -SR_tot, -SR_exo,-CSI) %>%
   rename(
     # streamflow
-    "Flow mean" = "Q_MEAN", "Flow max" = "Q_MAX","Flow min" = "Q_MIN","Flow seasonality" = "Q_CV",
+    "Discharge mean" = "Q_MEAN", "Discharge max" = "Q_MAX","Discharge min" = "Q_MIN","Discharge seasonality" = "Q_CV",
     # habitat area, heterogeneity and isolation
     "Catchment area" = "AREA", "Topographic Index" = "TI", "Elevation" = "ELEVATION",
-    # climate
-    "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", 
+    # productivity
+    "Precipitation" = "PREC_PRES","Temperature" = "TEMP_PRES", "Latitude" = "LAT",
     # quaternary climate stability
     "Precipitation change" = "PREC_DELTA", "Temperature change" = "TEMP_DELTA", "Paleo area" = "PALEO_AREA",
     # anthropogenic
     "Human Footprint Index" = "HFP2009",
-    "Fragmentation Status Index" = "FSI",
-    "No. exotic species" = "SR_exo"
+    "Fragmentation Status Index" = "FSI"
   )
 
 # normalized
@@ -360,12 +381,13 @@ covariates.t <- normalize_vars(covariates,figs_name = 'figs/covariates_hist', BN
 #predict(readRDS('proc/covariates_BN.rds')$CSI,v_est2,inverse = T)
 # corr matrix
 jpeg('figs/corrplot_covariates.jpg',width = 200, height = 200, res = 600, units = 'mm')
-corrplot::corrplot(cor(covariates, use = "pairwise.complete.obs"), method = 'number', type = 'lower',number.cex = 0.8)
+corrplot::corrplot(cor(covariates, method = 'spearman', use = "pairwise.complete.obs"), method = 'number', type = 'lower',number.cex = 0.8)
 dev.off()
 
-jpeg('figs/corrplot_covariates_normalized.jpg',width = 200, height = 200, res = 600, units = 'mm')
-corrplot::corrplot(cor(covariates.t, use = "pairwise.complete.obs"), method = 'number', type = 'lower',number.cex = 0.8)
-dev.off()
+# not needed as we are using spearman rank correlation now --> values are indeed very similar
+# jpeg('figs/corrplot_covariates_normalized.jpg',width = 200, height = 200, res = 600, units = 'mm')
+# corrplot::corrplot(cor(covariates.t, use = "pairwise.complete.obs"), method = 'number', type = 'lower',number.cex = 0.8)
+# dev.off()
 
 # 
 # # Then VIFS

@@ -1,4 +1,9 @@
 
+################################################################################
+# DISCLAIMER: some of the figures scripts have been adapted and moved to       #
+# 3_modelling >> check that script first                                       #
+################################################################################
+
 source('R/MASTER.R')
 valerioUtils::libinv(c('dplyr','tidyr','ggplot2','sf'))
 
@@ -41,7 +46,7 @@ s <- read_sf('spatial/stations_catchments.gpkg')
 
 s <- s %>% select(ID = gsim.no) %>% right_join(t)
 
-st_write(s,'spatial/input_tab.gpkg')
+st_write(s,'spatial/input_tab.gpkg',delete_dsn = T)
 
 
 # library(raster)
@@ -111,11 +116,11 @@ library(dplyr); library(sf);
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
 Q_name <- c('Mean flow','Minimum flow','Maximum flow')
 
-random_term <- 'BAS'
+random_term <- 'BAS/KG'
 response_selection = 'SR_tot'
 dfu <- read.csv('tabs/input_tab.csv')
 
-res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_',response_selection,'_',x,'_FILTERED.csv')))
+res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_nested_',response_selection,'_',x,'_FILTERED.csv')))
 
 df_ <- list()
 df_line <- list()
@@ -144,7 +149,7 @@ for(i in 1:3){
   library(effects)
   est<-Effect("HFP2009", partial.residuals=T, fit, quantiles = seq(0,1,by=0.02))
   est2 <- Effect("FSI", partial.residuals=T, xlevels = list(x1=c(-1,0,1)), fit)
-  est3 <- Effect("SR_exo", partial.residuals=T, fit, quantiles = seq(0,1,by=0.02))
+  # est3 <- Effect("SR_exo", partial.residuals=T, fit, quantiles = seq(0,1,by=0.02))
   # est <- predictorEffect("HFP2009", partial.residuals=T, fit)
   # 
   # v_est2 <- est2$x[,1]
@@ -161,18 +166,20 @@ for(i in 1:3){
         y = est2$fit,
         x = predict(readRDS('proc/covariates_BN.rds')$FSI,est2$x[,1],inverse = T),
         lo = est2$lower, up = est2$upper, Q = Qn, var = "FSI"
-      ),
-      data.frame(
-        y = est3$fit,
-        x = predict(readRDS('proc/covariates_BN.rds')$SR_exo,est3$x[,1],inverse = T),
-        lo = est3$lower, up = est3$upper, Q = Qn, var = "No. exotic species"
       )
+      # ,
+      # data.frame(
+      #   y = est3$fit,
+      #   x = predict(readRDS('proc/covariates_BN.rds')$SR_exo,est3$x[,1],inverse = T),
+      #   lo = est3$lower, up = est3$upper, Q = Qn, var = "No. exotic species"
+      # )
     )
   
   df_[[i]] <- rbind(
     data.frame(resid = est$residuals + abs(min(est$residuals)),var = "HFI", Q = Qn, x = dfu$HFP2009),
-    data.frame(resid = est2$residuals + abs(min(est2$residuals)),var = "FSI", Q = Qn, x = dfu$FSI),
-    data.frame(resid = est3$residuals + abs(min(est3$residuals)),var = "No. exotic species", Q = Qn, x = dfu$SR_exo)
+    data.frame(resid = est2$residuals + abs(min(est2$residuals)),var = "FSI", Q = Qn, x = dfu$FSI)
+    # ,
+    # data.frame(resid = est3$residuals + abs(min(est3$residuals)),var = "No. exotic species", Q = Qn, x = dfu$SR_exo)
   )
   
   
@@ -216,7 +223,7 @@ ggsave('figs/partial_dependence.jpg',p,
 library(dplyr); library(sf);
 
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
-random_term <- 'BAS'
+random_term <- 'BAS/KG'
 response_selection = 'SR_tot'
 
 # calculate residuals
@@ -225,7 +232,7 @@ for(i in 1:3){
   df <- read.csv('tabs/input_tab_transformed.csv')
   dfu <- read.csv('tabs/input_tab.csv')
   
-  res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_',response_selection,'_',x,'_FILTERED.csv')))
+  res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_nested_',response_selection,'_',x,'_FILTERED.csv')))
   
   Qvar <- Q_magnitude[i]
   mod <- paste0('SR_tot ~',
@@ -283,15 +290,32 @@ crs_custom <- st_crs(4326)
 crop_main <- c(-180, 180, -60, 90)
 cropping_poly <- st_bbox(raster::extent(crop_main), crs = st_crs(4326)) %>% st_as_sfc(.)
 
-world <- rnaturalearth::ne_countries(returnclass = "sf")[,1] %>%
+sf_use_s2(FALSE)
+
+
+world <- read_sf('data/naturalearth/ne_110m_admin_0_countries/ne_110m_admin_0_countries.shp')[,1] %>%
   st_crop(cropping_poly) %>%
   st_transform(crs_custom)
-bb <- rnaturalearth::ne_download(type = "wgs84_bounding_box", category = "physical",returnclass = "sf") %>%
+
+# world <- rnaturalearth::ne_countries(type='countries',returnclass = "sf")[,1] %>%
+#   st_crop(cropping_poly) %>%
+#   st_transform(crs_custom)
+
+bb <- read_sf('data/naturalearth/ne_110m_graticules_all/ne_110m_wgs84_bounding_box.shp') %>%
   st_crop(cropping_poly) %>%
   st_transform(crs_custom)
-graticules <- rnaturalearth::ne_download(type = "graticules_30", category = "physical",returnclass = "sf") %>%
+
+# bb <- rnaturalearth::ne_download(type = "wgs84_bounding_box", category = "physical",returnclass = "sf") %>%
+#   st_crop(cropping_poly) %>%
+#   st_transform(crs_custom)
+
+graticules <- read_sf('data/naturalearth/ne_110m_graticules_all/ne_110m_graticules_30.shp') %>%
   st_crop(cropping_poly) %>%
   st_transform(crs_custom)
+
+# graticules <- rnaturalearth::ne_download(type = "graticules_30", category = "physical",returnclass = "sf") %>%
+#   st_crop(cropping_poly) %>%
+#   st_transform(crs_custom)
 
 # and draw
 library(ggplot2)
@@ -447,7 +471,7 @@ i = 1
 df <- read.csv('tabs/input_tab_transformed.csv')
 dfu <- read.csv('tabs/input_tab.csv')
 
-res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_',response_selection,'_',x,'_FILTERED.csv')))
+res_filtered <- lapply(Q_magnitude,function(x) read.csv(paste0('tabs/dredge_coefficients_nested_',response_selection,'_',x,'_FILTERED.csv')))
 
 Qvar <- Q_magnitude[i]
 mod <- paste0('SR_tot ~',
@@ -467,40 +491,148 @@ fit <- lme4::lmer(gsub(' I','',mod), data = df)
 
 var = 'FSI'
 xax = 10**seq(-1,6,2)
-yax = 10**(seq(0.5,2.5,0.5))
-vec = c(0.5,5,50,100)
-ps <- plot_model(fit, 
+yax = 10**(seq(0.8,2.3,0.3))
+vec = c(0,0.05,0.5,13,66)
+p_fsi <- plot_model(fit, 
                  type='pred',
                  terms = c(paste0('Q [',paste(round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1),collapse = ','),']'),
                            paste0(var,' [',paste(round(predict(readRDS('proc/covariates_BN.rds')$FSI,vec,inverse = F),1),collapse = ','),']')
                  ),
                  title = '', axis.title = c('Flow','Species richness')) + 
-  scale_color_discrete(name = "FSI", labels = vec) + 
+  scale_color_discrete(name = "FSI", labels = vec) + #paste0(vec,' (',c(0,0.25,0.50,0.75,1),')') 
   scale_x_continuous(breaks = round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1), labels = formatC(xax, format = "e", digits = 0)) +
-  scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0)) +
-  theme_bw()
-ps
+  scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0), limits = log10(range(yax))) +
+  theme_bw() +
+  theme(legend.direction = 'horizontal',legend.position = 'top')
+p_fsi
 
-ggsave('figs/FSI_int.jpg', ps,
-       width = 100,height = 100,dpi = 300,units = 'mm')
+# ggsave('figs/FSI_int.jpg', ps,
+#        width = 120,height = 100,dpi = 300,units = 'mm',scale=0.8)
 
-
-var = 'SR_exo'
+var = 'HFP2009'
 xax = 10**seq(-1,6,2)
-yax = 10**(seq(0,4,1))
-vec = c(1,10,30,50)
-ps <- plot_model(fit, 
+yax = 10**(seq(0.8,2.3,0.3))
+vec = c(0,3.5,8,12,36)
+p_hfi <- plot_model(fit, 
                  type='pred',
                  terms = c(paste0('Q [',paste(round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1),collapse = ','),']'),
-                           paste0(var,' [',paste(round(predict(readRDS('proc/covariates_BN.rds')$SR_exo,vec,inverse = F),1),collapse = ','),']')
+                           paste0(var,' [',paste(round(predict(readRDS('proc/covariates_BN.rds')$HFP2009,vec,inverse = F),1),collapse = ','),']')
                  ),
                  title = '', axis.title = c('Flow','Species richness')) + 
-  scale_color_discrete(name = "No exotic sp", labels = vec) + 
+  scale_color_discrete(name = "HFI", labels = vec) + 
   scale_x_continuous(breaks = round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1), labels = formatC(xax, format = "e", digits = 0)) +
-  scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0)) +
-  theme_bw()
-ps
+  scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0), limits = log10(range(yax))) +
+  theme_bw() +
+  theme(legend.direction = 'horizontal',legend.position = 'top')
+p_hfi
 
-ggsave('figs/SRexo_int.jpg', ps,
-       width = 100,height = 100,dpi = 300,units = 'mm')
+# ggsave('figs/HFI_int.jpg', ps,
+#        width = 120,height = 100,dpi = 300,units = 'mm',scale = 0.8)
+library(ggpubr)
+figure <- ggarrange(p_hfi + theme(legend.title = element_blank()) + rremove("ylab") + rremove("xlab"),
+                    p_fsi + theme(legend.title = element_blank()) + rremove("ylab") + rremove("xlab"),
+                    labels = c("a) HFI", "b) FSI"),
+                    vjust = 4.2,
+                    align = "hv", 
+                    ncol = 2, nrow = 1)
+f <- annotate_figure(figure, 
+                left = text_grob("Species richness [-]", size = 14, rot = 90),
+                bottom = text_grob("Flow [m3/s]", size = 14))
+# figure
+# saved manually for now
+ggsave('figs/interaction_plots_HFI_FSI.jpg',f,width = 220,height = 130,dpi = 300,units = 'mm')
+
+# var = 'SR_exo'
+# xax = 10**seq(-1,6,2)
+# yax = 10**(seq(0,4,1))
+# vec = c(1,10,30,50)
+# ps <- plot_model(fit, 
+#                  type='pred',
+#                  terms = c(paste0('Q [',paste(round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1),collapse = ','),']'),
+#                            paste0(var,' [',paste(round(predict(readRDS('proc/covariates_BN.rds')$SR_exo,vec,inverse = F),1),collapse = ','),']')
+#                  ),
+#                  title = '', axis.title = c('Flow','Species richness')) + 
+#   scale_color_discrete(name = "No exotic sp", labels = vec) + 
+#   scale_x_continuous(breaks = round(predict(readRDS('proc/covariates_BN.rds')$Q_MEAN,xax,inverse = F),1), labels = formatC(xax, format = "e", digits = 0)) +
+#   scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0)) +
+#   theme_bw()
+# ps
+# 
+# ggsave('figs/SRexo_int.jpg', ps,
+#        width = 100,height = 100,dpi = 300,units = 'mm')
+
+
+# ------------
+# check distribution in different realms
+t <- read.csv('tabs/input_tab.csv') %>%
+  as_tibble() %>%
+  left_join(
+    read.csv('data/GIS_hs_snapped/legend.csv') %>% select(Realm, REALM = Realm_ID) %>% distinct
+  )
+
+t_bas <- t %>%
+  group_by(BAS) %>%
+  summarise(Realm = names(sort(table(Realm),decreasing = T)[1]))
+
+t$Realm <- as.factor(t$Realm)
+levels(t$Realm) <- paste0(levels(t$Realm),'\n(',table(t$Realm) %>% as.numeric,')')
+
+library(ggplot2)
+pc <- ggplot(t) +
+  geom_bar(aes(x=Realm)) +
+  ylab('No. catchments') +
+  xlab('') +
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank()
+  )
+
+# ggsave('figs/Realm_hist.jpg', p,
+#        width = 130,height = 100,dpi = 300,units = 'mm')
+
+t_bas$Realm <- as.factor(t_bas$Realm)
+levels(t_bas$Realm) <- paste0(levels(t_bas$Realm),'\n(',table(t_bas$Realm) %>% as.numeric,')')
+
+pb <- ggplot(t_bas) +
+  geom_bar(aes(x=Realm)) +
+  ylab('No. main basins') +
+  xlab('') +
+  theme_minimal() +
+  theme(
+    panel.grid.major.x = element_blank()
+  )
+
+# ggsave('figs/Realm_bas_hist.jpg', p,
+#        width = 130,height = 100,dpi = 300,units = 'mm')
+
+p <- ggarrange(pb,pc,labels = c('a)','b)'),vjust = 2)
+ggsave('figs/Realm_hist.jpg', p,
+       width = 220,height = 100,dpi = 300,units = 'mm')
+
+
+# --------------------------
+# years monitored histogram
+tab <- read.csv('tabs/input_tab.csv')
+# check distribution of years
+years_monitores <- lapply( # use lapply function that can be easily parallelized on linux
+  tab$ID, # get the vector of names from the tibble
+  function(x){
+    tab <- read.csv(paste0(GSIM_dir,'GSIM_indices/TIMESERIES/yearly/',x,'.year'),skip = 21) %>% #skip first 21 rows which are not tabulated
+      dplyr::filter(n.available >= 350) %>%
+      mutate(year = lapply(date,function(x) strsplit(x,'-')[[1]][1]) %>% as.numeric) %>%
+      mutate(gsim.no = x) %>%
+      select(gsim.no,year)
+    return(tab)
+  }
+) %>% do.call('rbind',.)
+
+library(ggplot2)
+p <- ggplot(years_monitores) +
+  geom_histogram(aes(x=year),binwidth = 3) +
+  xlab('monitoring years') +
+  ylab('frequency') +
+  theme_minimal()
+p
+ggsave('figs/years_monitored_hist.jpg',p)
+
 

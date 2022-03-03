@@ -44,9 +44,10 @@ lmer.glmulti<-function(formula,data,random="",...) {
 
 # define variables
 covariates_selection <- tab.t %>% select(-BAS,-KG, -REALM, -ID,-SR_tot, -SR_exo,-starts_with('Q_M'), -starts_with('Q_DOY')) %>% colnames
+# covariates_selection <- tab.t %>% select(starts_with('Q'),-starts_with('Q_M'),TEMP_PRES,ELEVATION) %>% colnames
 
 response_selection = 'SR_tot'
-random_term <- 'BAS'#/KG
+random_term <- 'BAS/REALM'#/KG
 # interaction_term <- c('TEMP_PRES','ELEVATION') # interactions with Q_magnitude variables
 interaction_term <- c('HFP2009','FSI') # interactions with Q_magnitude variables
 Q_magnitude <- c('Q_MEAN','Q_MIN','Q_MAX')
@@ -126,7 +127,7 @@ for(Qvar in Q_magnitude){
       row.names(t) <- NULL
       return(t)
     }
-    write.csv(t_res,paste0(valerioUtils::dir_('tabs/dredging/'),'dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'),row.names = F)
+    write.csv(t_res,paste0(valerioUtils::dir_('tabs/dredging_nested/'),'dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'),row.names = F)
     
   }
   
@@ -140,7 +141,7 @@ for(Qvar in Q_magnitude){
 
 res_filtered <- foreach(Qvar = Q_magnitude) %do% {
   
-  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
+  d <- foreach(nv = 1:(length(covariates_selection)+length(interaction_term)+1),.combine = 'rbind') %do% read.csv(paste0('tabs/dredging_nested/dredge_coefficients_no',nv,'_',response_selection,'_',Qvar,'.csv'))
   
   # filter out rows with correlated terms
   rows_to_filter <- numeric()
@@ -165,7 +166,7 @@ res_filtered <- foreach(Qvar = Q_magnitude) %do% {
     do.call('rbind',.) %>%
     arrange(desc(no_pred))
   
-  write.csv(dfilt,paste0('tabs/dredge_coefficients_',response_selection,'_',Qvar,'_FILTERED.csv'),row.names = F)
+  write.csv(dfilt,paste0('tabs/dredge_coefficients_nested_',response_selection,'_',Qvar,'_FILTERED.csv'),row.names = F)
   
   return(dfilt)
   
@@ -212,16 +213,16 @@ for(j in 1:3) ll <- c(ll,coefficients(fit[[j]])[[1]] %>% colnames())
 ll %>% unique
 
 p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
-                model.names = c('Min. discharge','Mean discharge','Max. discharge'),
+                model.names = c('Minimum flow','Mean flow','Maximum flow'),
                 colors = colorspace::sequential_hcl(4,'Viridis')[1:3],
                 coefs = c(
                   # streamflow
-                  "Discharge" = "Q","Discharge seasonality" = "Q_CV",
+                  "Flow" = "Q","Flow seasonality" = "Q_CV",
                   
                   # anthropogenic
                   # "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
                   "Human Footprint Index (HFI)" = "HFP2009",
-                  "Fragmentation Status Index (FSI)" = "FSI", "FSI*Discharge" = "I(FSI * Q)",
+                  "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)",
                   
                   # habitat area, heterogeneity and isolation
                   "Catchment area" = "AREA", 
@@ -251,19 +252,19 @@ p <- plot_summs(fit[[2]],fit[[1]],fit[[3]],
     legend.box.margin=margin(-5,-10,-10,-10)
   )
 p
-ggsave('figs/coefficients_regression.jpg', p,width = 150, height = 150, units = 'mm', dpi = 600)
+ggsave('figs/coefficients_regression_nested.jpg', p,width = 150, height = 150, units = 'mm', dpi = 600)
 
 export_summs(fit,
              model.names = Q_magnitude,
              colors = colorspace::sequential_hcl(4,'Viridis')[1:3],
              coefs = c(
                # streamflow
-               "Discharge" = "Q","Discharge seasonality" = "Q_CV",
+               "Flow" = "Q","Flow seasonality" = "Q_CV",
                
                # anthropogenic
                # "No. exotic species" = "SR_exo", "Exotic*Flow" = "I(SR_exo * Q)",
                "Human Footprint Index (HFI)" = "HFP2009",
-               "Fragmentation Status Index (FSI)" = "FSI", "FSI*Discharge" = "I(FSI * Q)",
+               "Fragmentation Status Index (FSI)" = "FSI", "FSI*Flow" = "I(FSI * Q)",
                
                # habitat area, heterogeneity and isolation
                "Catchment area" = "AREA", 
@@ -278,60 +279,8 @@ export_summs(fit,
                "Precipitation change" = "PREC_DELTA",
                "Paleo area" = "PALEO_AREA"
                
-             )
-             
-             , to.file = "docx", file.name = 'tabs/coefficients_regression.docx')
-
-# variable importance ----------------------------------------------------------
-# 
-calc.relip.mm <- function(model,type='lmg') {
-  if (!isLMM(model) & !isGLMM(model)) {
-    stop('Currently supports only lmer/glmer objects', call. = FALSE)
-  }
-  require(lme4)
-  X <- getME(model,'X')
-  X <- X[,-1]
-  Y <- getME(model,'y')
-  s_resid <- sigma(model)
-  s_effect <- getME(model,'theta')*s_resid
-  s2 <- sum(s_resid^2,s_effect^2)
-  V <- Diagonal(x = s2,n=nrow(X))
-  YX <- cbind(Y,X)
-  cov_XY <- solve( t(YX) %*% solve(V) %*% as.matrix(YX))
-  colnames(cov_XY) <- rownames(cov_XY) <- colnames(YX)
-  importances <- relaimpo::calc.relimp(as.matrix(cov_XY),rela=T,type=type)
-  return(importances)
-}
-
-calc.relip.mm(fit[[1]])
-
-r2glmm::r2beta(fit[[1]],method = 'nsj') %>% plot
+               
+             ), to.file = "docx", file.name = 'tabs/coefficients_regression_nested.docx')
 
 
 
-library(dominanceanalysis)
-m <- fit[[1]]
-m0 <- lmer("SR_tot ~ 1 + (1|BAS)",m@frame)
-
-da <- dominanceAnalysis(fit[[1]],null.model = m0)
-plot(da)
-
-
-library(ggplot2)
-t <- as.data.frame(da$contribution.average$n.marg)
-colnames(t) <- 'value'
-t$var <- row.names(t)
-ggplot(t) +
-  geom_bar(aes(x = var, y = value, fill = var),stat = 'identity', show.legend = F)
-
-t <- as.data.frame(da$contribution.average$n.cond)
-colnames(t) <- 'value'
-t$var <- row.names(t)
-ggplot(t) +
-  geom_bar(aes(x = var, y = value, fill = var),stat = 'identity', show.legend = F)
-
-
-
-# taking forever, not tested
-dab <- bootDominanceAnalysis(m,null.model = m0,R=10)
-summary(dab)
