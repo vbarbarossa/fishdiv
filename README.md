@@ -1,7 +1,7 @@
 # fishdiv
 
 *Modelling steps for the study:*
-Schipper & Barbarossa (in review). Global congruence of riverine fish species richness and human presence.
+Schipper & Barbarossa (2022). Global congruence of riverine fish species richness and human presence. *Global Ecology and Biogeography*
 
 ---------------------------------------------------------------------------------------------------------
 
