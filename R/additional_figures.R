@@ -57,7 +57,6 @@ st_write(s,'spatial/input_tab.gpkg',delete_dsn = T)
 
 
 # main centroid map-----------------------------------------------------------------------------------------
-library(sf)
 s <- sf::read_sf('spatial/stations_catchments.gpkg')
 
 # calculate centroids of s
@@ -454,8 +453,8 @@ pm <- ggarrange(
 )
 ggsave('figs/map_SR.jpg', pm,
        width = 200,height = 90,dpi = 300,units = 'mm')
-# ggsave('figs/map_SR.tiff', pm,
-#        width = 200,height = 90,dpi = 600,units = 'mm')
+ggsave('figs/map_SR.pdf', pm,
+       width = 200,height = 90,units = 'mm')
 
 #--------------------------------------------------------------------------
 

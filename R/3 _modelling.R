@@ -102,6 +102,7 @@ plot_and_print <- function(fit_list,name, coefs_names = NULL){
   ) +
     theme_bw() +
     theme(
+      text = element_text(size = 11),
       axis.title = element_blank(),
       panel.grid.minor.y = element_blank(),
       panel.grid.major.y = element_blank(),
@@ -113,6 +114,7 @@ plot_and_print <- function(fit_list,name, coefs_names = NULL){
     )
   p
   ggsave(paste0(name,'/coefficients_regression.jpg'), p,width = 150, height = 150, units = 'mm', dpi = 600)
+  ggsave(paste0(name,'/coefficients_regression.pdf'), p,width = 150, height = 140, units = 'mm')
   
   export_summs(fit_list,
                model.names = Q_magnitude,
@@ -384,7 +386,9 @@ for(i in 1:length(fit)){
     scale_x_continuous(breaks = round((log10(xax)-attr(scale(log10(tab[,Qvar])),'scaled:center'))/attr(scale(log10(tab[,Qvar])),'scaled:scale'),1), labels = formatC(xax, format = "e", digits = 0)) +
     scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0), limits = log10(range(yax))) +
     theme_bw() +
-    theme(legend.direction = 'horizontal',legend.position = 'top')
+    theme(legend.direction = 'horizontal',legend.position = 'top',
+          panel.grid = element_blank(),
+          text = element_text(size = 14))
   # p_fsi
   
   var = 'HFP2009'
@@ -402,13 +406,16 @@ for(i in 1:length(fit)){
     scale_x_continuous(breaks = round((log10(xax)-attr(scale(log10(tab[,Qvar])),'scaled:center'))/attr(scale(log10(tab[,Qvar])),'scaled:scale'),1), labels = formatC(xax, format = "e", digits = 0)) +
     scale_y_continuous(breaks = log10(yax), labels = formatC(yax, format = "e", digits = 0), limits = log10(range(yax))) +
     theme_bw() +
-    theme(legend.direction = 'horizontal',legend.position = 'top')
+    theme(legend.direction = 'horizontal',legend.position = 'top',
+          panel.grid = element_blank(),
+          text = element_text(size = 14))
   # p_hfi
   
   library(ggpubr)
   figure <- ggarrange(p_hfi + theme(legend.title = element_blank()) + rremove("ylab") + rremove("xlab"),
                       p_fsi + theme(legend.title = element_blank()) + rremove("ylab") + rremove("xlab"),
                       labels = c("a) Human Footprint Index", "b) Fragmentation Status Index"),
+                      font.label = list(size = 14, color = "black", face = "plain", family = NULL),
                       # labels.x = 0,
                       # labels.y = 5,
                       vjust = 2,
@@ -418,11 +425,10 @@ for(i in 1:length(fit)){
   # figure
   f <- annotate_figure(figure, 
                        left = text_grob("Species richness [-]", size = 14, rot = 90),
-                       bottom = text_grob("Discharge [m3/s]", size = 14))
-  
+                       bottom = text_grob(bquote('Discharge ['*m^3*'/s]'), size = 14))
   # save
   ggsave(paste0('proc/finalMod_transManual/interaction_plots_HFI_FSI',Qv,'.jpg'),f,width = 220,height = 130,dpi = 300,units = 'mm')
-  
+  ggsave(paste0('proc/finalMod_transManual/interaction_plots_HFI_FSI',Qv,'.pdf'),f,width = 220,height = 130,units = 'mm')
 }
 
 
